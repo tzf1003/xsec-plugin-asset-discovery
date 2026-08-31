@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const artifact = new URL("../plugins/com.xsec.asset-discovery/com.xsec.desktop/frontend/index.js", import.meta.url);
 const manifestPath = new URL("../plugins/com.xsec.asset-discovery/plugin.json", import.meta.url);
 const codexManifestPath = new URL("../plugins/com.xsec.asset-discovery/.codex-plugin/plugin.json", import.meta.url);
@@ -12,6 +13,7 @@ const packageMetadata = JSON.parse(await readFile(packagePath, "utf8"));
 if (!source.includes("export function activate(host)") || /from\s*["']\.?\//.test(source)) {
   throw new Error("资产发现前端制品必须是单一 ESM 模块");
 }
-if (manifest.version !== "1.3.1" || codexManifest.version !== manifest.version || packageMetadata.version !== manifest.version) {
-  throw new Error("资产发现发布元数据必须使用一致的 1.3.1 版本");
+const releaseVersions = [manifest.version, codexManifest.version, packageMetadata.version];
+if (!releaseVersions.every((version) => typeof version === "string" && SEMVER_PATTERN.test(version)) || new Set(releaseVersions).size !== 1) {
+  throw new Error("资产发现发布元数据必须使用一致的有效 SemVer 版本");
 }
