@@ -92,7 +92,7 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
   return <section className="ad-assets">
     <AssetFilterToolbar filters={filters} queryDraft={queryDraft} runs={runs} selectedCount={selected.length} mutating={mutating} onSubmit={() => update({ query: queryDraft.trim() || undefined })} onQuery={(value) => { setQueryDraft(value); if (!value) update({ query: undefined }); }} onUpdate={update} onRun={onSelectedRunId} onImport={() => void openImport()} onDelete={() => setDeleteOpen(true)} />
     {notice ? <Notice>{notice}</Notice> : null}
-    {error && !page ? <ErrorState error={error} onRetry={() => void load()} /> : null}
+    {error ? <ErrorState error={error} onRetry={() => void load()} /> : null}
     {!error && !loading && !page?.items.length ? <EmptyState>资产池为空</EmptyState> : null}
     {page?.items.length ? <AssetTable page={page} filters={filters} selected={selected} mutating={mutating} onSelected={setSelected} onUpdate={update} /> : null}
     {importOpen ? <ImportModal projects={projects} error={projectsError} projectId={projectId} count={selected.length} saving={mutating} onProject={setProjectId} onClose={() => setImportOpen(false)} onConfirm={() => void confirmImport()} /> : null}
