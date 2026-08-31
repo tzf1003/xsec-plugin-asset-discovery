@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AssetDiscoveryApi } from "./host";
 import type { CollectionStatusFilter, CollectorProvider, CollectorSettings, ExecutionDefaults, PluginHost } from "./types";
-import { collectionMetrics, validateCollectorScope } from "./utils";
+import { approvalModeLabel, collectionMetrics, validateCollectorScope } from "./utils";
 import { AssetPool } from "./asset-pool";
 import { useDashboardState } from "./dashboard-state";
 import { RunsPanel } from "./runs-panel";
@@ -156,7 +156,7 @@ function CollectModal({ settings, settingsError, defaults, defaultsError, onClos
   };
   return <Modal title="启动资产收集" onClose={close} footer={<><Button disabled={saving} onClick={close}>取消</Button><Button className="primary" disabled={saving || incomplete || !defaults} onClick={() => void start()}>启动</Button></>}>
     <CollectFields provider={provider} prompt={prompt} name={name} workdir={workdir} saving={saving} onProvider={(value) => { setProviderTouched(true); setProvider(value); }} onPrompt={setPrompt} onName={setName} onWorkdir={setWorkdir} />
-    <p className="ad-muted">访问模式：{defaults?.approval_mode === "full" ? "继承批量默认：完全访问" : defaults ? "继承批量默认：LLM 自动审批" : "正在读取任务默认设置…"}</p>
+    <p className="ad-muted">访问模式：{defaults ? `继承批量默认：${approvalModeLabel(defaults.approval_mode)}` : "正在读取任务默认设置…"}</p>
     {incomplete ? <Notice action={<Button className="compact" onClick={() => { onClose(); void onOpenSettings(); }}>前往插件设置</Button>}>当前数据源配置不完整，无法启动收集任务。</Notice> : null}
     {settingsError ? <p className="ad-field-error">{settingsError}</p> : null}{defaultsError ? <p className="ad-field-error">{defaultsError}</p> : null}{error ? <p className="ad-field-error">{error}</p> : null}
   </Modal>;

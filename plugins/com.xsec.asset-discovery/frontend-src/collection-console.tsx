@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AssetDiscoveryApi } from "./host";
 import type { CollectionRun, ExecutionLogPage, ExecutionSnapshot } from "./types";
-import { collectionBucket, collectionResultDescription, formatDuration, formatTime, providerLabel, runTitle } from "./utils";
+import { approvalModeLabel, collectionBucket, collectionResultDescription, formatDuration, formatTime, providerLabel, runTitle } from "./utils";
 import { ConfirmModal, Button, EmptyState, ErrorState, Notice, Section, StatusBadge } from "./ui";
 import { ExecutionProcess } from "./execution-process";
 
@@ -30,10 +30,11 @@ function flow(run: CollectionRun) {
   const terminal = bucket === "completed" || bucket === "failed" || bucket === "cancelled";
   const completed = bucket === "completed";
   const failed = bucket === "failed" || bucket === "cancelled";
+  const startupFailed = run.failure_code === "startup_timeout";
   return [
-    { title: "启动收集 Agent", state: "done", text: formatTime(run.created_at) },
-    { title: `查询 ${providerLabel(run.provider)}`, state: bucket === "running" && !run.total ? "active" : completed || run.total ? "done" : failed ? "failed" : "pending", text: "按授权范围检索资产" },
-    { title: "结果入库", state: completed || run.total ? "done" : bucket === "running" ? "pending" : failed ? "skipped" : "pending", text: `${run.total} 条资产` },
+    { title: "启动收集 Agent", state: startupFailed ? "failed" : "done", text: startupFailed ? "启动超时" : formatTime(run.created_at) },
+    { title: `查询 ${providerLabel(run.provider)}`, state: startupFailed ? "skipped" : bucket === "running" && !run.total ? "active" : completed || run.total ? "done" : failed ? "failed" : "pending", text: "按授权范围检索资产" },
+    { title: "结果入库", state: startupFailed ? "skipped" : completed || run.total ? "done" : bucket === "running" ? "pending" : failed ? "skipped" : "pending", text: `${run.total} 条资产` },
     { title: bucket === "cancelled" ? "收集已停止" : bucket === "failed" ? "收集失败" : "收集完成", state: terminal ? (failed ? "failed" : "done") : "pending", text: terminal ? formatTime(run.finished_at) : "等待任务结束" },
   ];
 }
@@ -45,7 +46,7 @@ function Logs({ page, error, onMore, onRefresh }: { page?: ExecutionLogPage; err
 }
 
 function TaskDetails({ run }: { run: CollectionRun }) {
-  return <Section title="任务信息"><dl className="ad-inspector"><dt>任务 ID</dt><dd title={run.id}>{run.id}</dd><dt>数据源</dt><dd>{providerLabel(run.provider)}</dd><dt>状态</dt><dd><StatusBadge status={run.status} /></dd><dt>资产数</dt><dd>{run.total}</dd><dt>创建时间</dt><dd>{formatTime(run.created_at)}</dd><dt>更新时间</dt><dd>{formatTime(run.updated_at)}</dd><dt>完成时间</dt><dd>{formatTime(run.finished_at)}</dd><dt>耗时</dt><dd>{formatDuration(run.created_at, run.finished_at)}</dd><dt>访问模式</dt><dd>{run.approval_mode === "full" ? "继承批量默认：完全访问" : "继承批量默认：LLM 自动审批"}</dd>{run.terminal_reason ? <><dt>结算原因</dt><dd>{run.terminal_reason}</dd></> : null}{run.session_id ? <><dt>会话 ID</dt><dd>{run.session_id}</dd></> : null}</dl></Section>;
+  return <Section title="任务信息"><dl className="ad-inspector"><dt>任务 ID</dt><dd title={run.id}>{run.id}</dd><dt>数据源</dt><dd>{providerLabel(run.provider)}</dd><dt>状态</dt><dd><StatusBadge status={run.status} /></dd><dt>资产数</dt><dd>{run.total}</dd><dt>创建时间</dt><dd>{formatTime(run.created_at)}</dd><dt>更新时间</dt><dd>{formatTime(run.updated_at)}</dd><dt>完成时间</dt><dd>{formatTime(run.finished_at)}</dd><dt>耗时</dt><dd>{formatDuration(run.created_at, run.finished_at)}</dd><dt>访问模式</dt><dd>继承批量默认：{approvalModeLabel(run.approval_mode)}</dd>{run.terminal_reason ? <><dt>结算原因</dt><dd>{run.terminal_reason}</dd></> : null}{run.session_id ? <><dt>会话 ID</dt><dd>{run.session_id}</dd></> : null}</dl></Section>;
 }
 
 function ConsoleHeader({ run, mutating, onStop, onOpenAssets, onRefresh, onDelete }: { run: CollectionRun; mutating: boolean; onStop: () => void; onOpenAssets: () => void; onRefresh: () => void; onDelete: () => void }) {
@@ -181,7 +182,6 @@ function useLogStream(api: AssetDiscoveryApi, runId: string | undefined) {
 function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, running: boolean) {
   const [execution, setExecution] = useState<ExecutionSnapshot>();
   const [executionError, setExecutionError] = useState<string>();
-  const [streamPolling, setStreamPolling] = useState(true);
   const { logs, logsError, setLogsError, loadLatestLogs, loadMoreLogs } = useLogStream(api, runId);
   const refreshInFlight = useRef(false);
   const beginRefreshRequest = useRequestGuard(runId);
@@ -199,9 +199,6 @@ function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, ru
       const result = await Promise.all([loadExecution(), loadLatestLogs(adoptLogCursor)]);
       if (!isCurrent()) return false;
       const failed = result.includes("error");
-      const succeeded = result.every((state) => state === "ok");
-      if (failed) setStreamPolling(false);
-      if (succeeded) setStreamPolling(true);
       return !failed;
     } finally {
       if (isCurrent()) refreshInFlight.current = false;
@@ -209,14 +206,14 @@ function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, ru
   }, [beginRefreshRequest, loadExecution, loadLatestLogs]);
 
   useEffect(() => {
-    setExecution(undefined); setExecutionError(undefined); setStreamPolling(true);
+    setExecution(undefined); setExecutionError(undefined);
     if (runId) void refreshDetails();
   }, [refreshDetails, runId]);
   useEffect(() => {
-    if (!running || !streamPolling) return;
+    if (!running) return;
     const timer = window.setInterval(() => { void refreshDetails({ supersede: false }); }, LIVE_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [refreshDetails, running, streamPolling]);
+  }, [refreshDetails, running]);
   useTerminalSnapshot(runId, running, refreshDetails);
   return { execution, logs, executionError, logsError, setLogsError, loadMoreLogs, refreshDetails };
 }
