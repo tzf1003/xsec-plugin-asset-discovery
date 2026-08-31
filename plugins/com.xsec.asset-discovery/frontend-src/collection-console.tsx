@@ -6,6 +6,7 @@ import { ConfirmModal, Button, EmptyState, ErrorState, Notice, Section, StatusBa
 import { ExecutionProcess } from "./execution-process";
 
 const LIVE_REFRESH_INTERVAL_MS = 4_000;
+type LoadState = "ok" | "error" | "stale";
 
 type ConsoleProps = {
   api: AssetDiscoveryApi;
@@ -44,6 +45,31 @@ function ConsoleHeader({ run, mutating, onStop, onOpenAssets, onRefresh, onDelet
   return <header className="ad-console-header"><div><div className="ad-run-card-title"><h2>{runTitle(run)}</h2><StatusBadge status={run.status} /></div><p className="ad-description">{providerLabel(run.provider)} · {run.total} 条资产 · {formatDuration(run.created_at, run.finished_at)}</p></div><div className="ad-actions">{running ? <Button className="danger" disabled={mutating} onClick={onStop}>停止收集</Button> : null}<Button className="primary" onClick={onOpenAssets}>查看资产{run.total ? `（${run.total}）` : ""}</Button><Button onClick={onRefresh}>刷新</Button><Button className="danger" disabled={mutating} onClick={onDelete}>删除</Button></div></header>;
 }
 
+function mergeLogLines(current: ExecutionLogPage, next: ExecutionLogPage) {
+  const lines = [...current.lines, ...next.lines];
+  return lines.filter((line, index) => lines.findIndex((item) => item.timestamp === line.timestamp && item.direction === line.direction && item.text === line.text) === index);
+}
+
+function useRequestGuard(runId?: string) {
+  const selection = useRef({ runId, generation: 0, request: 0 });
+  if (selection.current.runId !== runId) selection.current = { runId, generation: selection.current.generation + 1, request: 0 };
+  return useCallback(() => {
+    const generation = selection.current.generation;
+    const request = selection.current.request + 1;
+    selection.current.request = request;
+    return () => selection.current.runId === runId && selection.current.generation === generation && selection.current.request === request;
+  }, [runId]);
+}
+
+function useTerminalSnapshot(runId: string | undefined, running: boolean, refreshDetails: () => Promise<boolean>) {
+  const previous = useRef({ runId, running });
+  useEffect(() => {
+    const terminal = previous.current.runId === runId && previous.current.running && !running;
+    previous.current = { runId, running };
+    if (terminal) void refreshDetails();
+  }, [refreshDetails, runId, running]);
+}
+
 function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, running: boolean) {
   const [execution, setExecution] = useState<ExecutionSnapshot>();
   const [logs, setLogs] = useState<ExecutionLogPage>();
@@ -51,32 +77,33 @@ function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, ru
   const [logsError, setLogsError] = useState<string>();
   const [streamPolling, setStreamPolling] = useState(true);
   const logCursor = useRef<string>();
-  const loadExecution = useCallback(async (): Promise<boolean> => {
-    if (!runId) return false;
+  const beginExecutionRequest = useRequestGuard(runId);
+  const beginLogsRequest = useRequestGuard(runId);
+  const loadExecution = useCallback(async (isCurrent = beginExecutionRequest()): Promise<LoadState> => {
+    if (!runId || !isCurrent()) return "stale";
     setExecutionError(undefined);
-    try { setExecution(await api.execution(runId)); return true; } catch (reason) { setExecutionError(`读取执行过程失败：${String(reason)}`); return false; }
-  }, [api, runId]);
-  const mergeLogLines = (current: ExecutionLogPage, next: ExecutionLogPage) => {
-    const lines = [...current.lines, ...next.lines];
-    return lines.filter((line, index) => lines.findIndex((item) => item.timestamp === line.timestamp && item.direction === line.direction && item.text === line.text) === index);
-  };
-  const loadLogs = useCallback(async (cursor?: string): Promise<boolean> => {
-    if (!runId) return false;
+    try { const next = await api.execution(runId); if (!isCurrent()) return "stale"; setExecution(next); return "ok"; } catch (reason) { if (!isCurrent()) return "stale"; setExecutionError(`读取执行过程失败：${String(reason)}`); return "error"; }
+  }, [api, beginExecutionRequest, runId]);
+  const loadLogs = useCallback(async (cursor?: string, isCurrent = beginLogsRequest()): Promise<LoadState> => {
+    if (!runId || !isCurrent()) return "stale";
     setLogsError(undefined);
     try {
       const next = await api.logs(runId, cursor);
+      if (!isCurrent()) return "stale";
       logCursor.current = next.next_cursor ?? cursor;
       setLogs((current) => cursor && current
         ? { ...next, lines: mergeLogLines(current, next), truncated: Boolean(current.truncated || next.truncated) }
         : next);
-      return true;
-    } catch (reason) { setLogsError(`读取收集日志失败：${String(reason)}`); return false; }
-  }, [api, runId]);
+      return "ok";
+    } catch (reason) { if (!isCurrent()) return "stale"; setLogsError(`读取收集日志失败：${String(reason)}`); return "error"; }
+  }, [api, beginLogsRequest, runId]);
   const refreshDetails = useCallback(async () => {
     const result = await Promise.all([loadExecution(), loadLogs(logCursor.current)]);
-    const healthy = result.every(Boolean);
-    setStreamPolling(healthy);
-    return healthy;
+    const failed = result.includes("error");
+    const succeeded = result.every((state) => state === "ok");
+    if (failed) setStreamPolling(false);
+    if (succeeded) setStreamPolling(true);
+    return !failed;
   }, [loadExecution, loadLogs]);
 
   useEffect(() => {
@@ -89,6 +116,7 @@ function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, ru
     const timer = window.setInterval(() => { void refreshDetails(); }, LIVE_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [refreshDetails, running, streamPolling]);
+  useTerminalSnapshot(runId, running, refreshDetails);
   return { execution, logs, executionError, logsError, setLogsError, loadLogs, refreshDetails };
 }
 
