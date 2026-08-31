@@ -23,7 +23,7 @@ await build({
   jsx: "automatic",
   define: { "process.env.NODE_ENV": '"production"' },
   minifyIdentifiers: false,
-  minifySyntax: true,
+  minifySyntax: false,
   minifyWhitespace: true,
   legalComments: "none",
 });
