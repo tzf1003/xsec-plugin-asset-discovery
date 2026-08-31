@@ -42,8 +42,8 @@ function asRecord<T>(value: unknown): T {
   return value as T;
 }
 
-function asExecutionLine(value: unknown): ExecutionLine {
-  if (typeof value === "string") return { timestamp: 0, direction: "process", text: value };
+function asExecutionLine(value: unknown, index: number): ExecutionLine {
+  if (typeof value === "string") return { timestamp: 0, direction: "process", text: value, identity: `legacy-${index}` };
   const line = asRecord<Record<string, unknown>>(value);
   if (typeof line.timestamp !== "number" || !Number.isFinite(line.timestamp) || typeof line.text !== "string") throw new Error("Host RPC 返回了无效日志行");
   if (line.direction !== "client_to_agent" && line.direction !== "agent_to_client" && line.direction !== "process") throw new Error("Host RPC 返回了无效日志方向");

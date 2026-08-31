@@ -53,6 +53,7 @@ function ConsoleHeader({ run, mutating, onStop, onOpenAssets, onRefresh, onDelet
 }
 
 function logLineKey(line: ExecutionLogPage["lines"][number]) {
+  if (line.identity) return line.identity;
   return `${line.timestamp}\u0000${line.direction}\u0000${line.text}`;
 }
 
@@ -136,6 +137,7 @@ function useLogStream(api: AssetDiscoveryApi, runId: string | undefined) {
     enqueueLogs({ cursor }, beginPagedLogsRequest)
   ), [beginPagedLogsRequest, enqueueLogs]);
   useEffect(() => {
+    logQueue.current = Promise.resolve();
     logCursor.current = undefined;
     logsRef.current = undefined;
     setLogs(undefined); setLogsError(undefined);
