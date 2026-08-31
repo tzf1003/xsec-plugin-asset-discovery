@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { AssetDiscoveryApi } from "./host";
 import type { CollectionRun, CollectionStatusFilter } from "./types";
 import { collectionMetrics, collectionResultDescription, filterRuns, formatTime, providerLabel, runSubtitle, runTitle } from "./utils";
@@ -42,6 +42,9 @@ export function RunsPanel({
   const metrics = useMemo(() => collectionMetrics(runs), [runs]);
   const visible = useMemo(() => filterRuns(runs, filter, query), [filter, query, runs]);
   const selected = visible.find((run) => run.id === selectedRunId) ?? visible[0];
+  useEffect(() => {
+    if (selectedRunId && !visible.some((run) => run.id === selectedRunId)) onSelect(visible[0]?.id);
+  }, [onSelect, selectedRunId, visible]);
   const activateRun = (run: CollectionRun, index: number, event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
     event.preventDefault();

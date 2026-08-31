@@ -13,12 +13,14 @@ function page(host: PluginHost) {
 
 export function activate(host: PluginHost) {
   let root: Root | undefined;
+  let revision = 0;
+  const render = () => root?.render(<><style>{styles}</style><div key={revision}>{page(host)}</div></>);
   return {
     mount(element: HTMLElement) {
       root = createRoot(element);
-      root.render(<><style>{styles}</style>{page(host)}</>);
+      render();
     },
-    update() {},
+    update() { revision += 1; render(); },
     dispose() { root?.unmount(); },
   };
 }

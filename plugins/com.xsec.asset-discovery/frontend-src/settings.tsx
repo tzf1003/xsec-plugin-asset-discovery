@@ -27,19 +27,29 @@ function configured(value: boolean): string {
   return value ? "已配置（保存于系统密钥库）" : "未配置";
 }
 
+function normalizedDraft(draft: SettingsDraft): SettingsDraft {
+  return {
+    provider: draft.provider,
+    hunterApiBaseUrl: draft.hunterApiBaseUrl.trim(),
+    fofaApiBaseUrl: draft.fofaApiBaseUrl.trim(),
+    hunterSkillPath: draft.hunterSkillPath.trim(),
+    fofaSkillPath: draft.fofaSkillPath.trim(),
+  };
+}
+
 function useSettingsReader(api: AssetDiscoveryApi) {
   const [settings, setSettings] = useState<CollectorSettings>();
   const [draft, setDraft] = useState<SettingsDraft>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
-  const load = useCallback(async () => {
+  const load = useCallback(async (replaceDraft = true) => {
     setLoading(true);
     setError(undefined);
     try {
       const next = await api.settings();
       setSettings(next);
-      setDraft(draftFrom(next));
+      setDraft((current) => replaceDraft || !current ? draftFrom(next) : current);
     } catch (reason) {
       setError(`读取资产发现设置失败：${String(reason)}`);
     } finally {
@@ -67,7 +77,7 @@ function useSettingsSave({ api, draft, setSettings, setDraft, setError, setNotic
     setSaving(true);
     setError(undefined);
     try {
-      const next = await api.saveSettings({ ...draft });
+      const next = await api.saveSettings(normalizedDraft(draft));
       setSettings(next);
       setDraft(draftFrom(next));
       setNotice("设置已保存；新的收集任务将使用这些默认值。");
@@ -175,7 +185,7 @@ function CredentialFields({ settings, credentials, saving, onChange, onSave, onC
 export function SettingsPage({ api }: { api: AssetDiscoveryApi }) {
   const reader = useSettingsReader(api);
   const settingsSave = useSettingsSave({ api, draft: reader.draft, setSettings: reader.setSettings, setDraft: reader.setDraft, setError: reader.setError, setNotice: reader.setNotice });
-  const credentials = useCredentials({ api, refresh: reader.load, setError: reader.setError, setNotice: reader.setNotice });
+  const credentials = useCredentials({ api, refresh: () => reader.load(false), setError: reader.setError, setNotice: reader.setNotice });
   const saving = settingsSave.saving || credentials.saving;
   if (reader.loading && !reader.settings) return <div className="ad-app ad-settings"><p className="ad-muted">正在读取资产发现设置…</p></div>;
   if (reader.error && !reader.settings) return <div className="ad-app ad-settings"><ErrorState error={reader.error} onRetry={() => void reader.load()} /></div>;

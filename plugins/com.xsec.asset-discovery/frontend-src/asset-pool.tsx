@@ -53,7 +53,16 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
 
   const load = useCallback(async () => {
     setLoading(true); setError(undefined); setPage(undefined);
-    try { setPage(await api.assets(filters)); setSelected([]); } catch (reason) { setError(`读取资产池失败：${String(reason)}`); } finally { setLoading(false); }
+    try {
+      const next = await api.assets(filters);
+      const lastPage = Math.max(1, Math.ceil(next.total / filters.pageSize));
+      if (!next.items.length && filters.page > lastPage) {
+        setFilters((current) => ({ ...current, page: lastPage }));
+        return;
+      }
+      setPage(next);
+      setSelected([]);
+    } catch (reason) { setError(`读取资产池失败：${String(reason)}`); } finally { setLoading(false); }
   }, [api, filters]);
 
   useEffect(() => { void load(); }, [load]);

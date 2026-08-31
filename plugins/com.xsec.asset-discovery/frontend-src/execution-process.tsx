@@ -117,7 +117,7 @@ export function ExecutionProcess({ execution, error, live, onRefresh }: ProcessP
   const process = useFollowLatest(entries, fingerprint, sessionId, live);
 
   if (error) return <ErrorState error={error} onRetry={onRefresh} />;
-  if (!sessionId) return <EmptyState>正在创建执行会话…</EmptyState>;
+  if (!sessionId) return <EmptyState>{live ? "正在创建执行会话…" : "该任务未生成可用的执行会话。"}</EmptyState>;
   if (!entries.length) return <EmptyState>{live ? "会话已连接，等待执行过程…" : "暂无可用执行记录"}</EmptyState>;
   return <div className="ad-process-wrap">
     {execution?.truncated ? <Notice>执行记录已按隔离通道大小截断；刷新或读取日志可查看后续内容。</Notice> : null}

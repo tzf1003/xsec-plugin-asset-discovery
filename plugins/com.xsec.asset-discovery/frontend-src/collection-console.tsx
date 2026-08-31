@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AssetDiscoveryApi } from "./host";
 import type { CollectionRun, ExecutionLogPage, ExecutionSnapshot } from "./types";
 import { collectionBucket, collectionResultDescription, formatDuration, formatTime, providerLabel, runTitle } from "./utils";
@@ -49,24 +49,37 @@ function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, ru
   const [executionError, setExecutionError] = useState<string>();
   const [logsError, setLogsError] = useState<string>();
   const [streamPolling, setStreamPolling] = useState(true);
+  const logCursor = useRef<string>();
   const loadExecution = useCallback(async (): Promise<boolean> => {
     if (!runId) return false;
     setExecutionError(undefined);
     try { setExecution(await api.execution(runId)); return true; } catch (reason) { setExecutionError(`读取执行过程失败：${String(reason)}`); return false; }
   }, [api, runId]);
+  const mergeLogLines = (current: ExecutionLogPage, next: ExecutionLogPage) => {
+    const lines = [...current.lines, ...next.lines];
+    return lines.filter((line, index) => lines.findIndex((item) => item.timestamp === line.timestamp && item.direction === line.direction && item.text === line.text) === index);
+  };
   const loadLogs = useCallback(async (cursor?: string): Promise<boolean> => {
     if (!runId) return false;
     setLogsError(undefined);
-    try { const next = await api.logs(runId, cursor); setLogs((current) => cursor && current ? { ...next, lines: [...current.lines, ...next.lines] } : next); return true; } catch (reason) { setLogsError(`读取收集日志失败：${String(reason)}`); return false; }
+    try {
+      const next = await api.logs(runId, cursor);
+      logCursor.current = next.next_cursor ?? cursor;
+      setLogs((current) => cursor && current
+        ? { ...next, lines: mergeLogLines(current, next), truncated: Boolean(current.truncated || next.truncated) }
+        : next);
+      return true;
+    } catch (reason) { setLogsError(`读取收集日志失败：${String(reason)}`); return false; }
   }, [api, runId]);
   const refreshDetails = useCallback(async () => {
-    const result = await Promise.all([loadExecution(), loadLogs()]);
+    const result = await Promise.all([loadExecution(), loadLogs(logCursor.current)]);
     const healthy = result.every(Boolean);
     setStreamPolling(healthy);
     return healthy;
   }, [loadExecution, loadLogs]);
 
   useEffect(() => {
+    logCursor.current = undefined;
     setExecution(undefined); setLogs(undefined); setExecutionError(undefined); setLogsError(undefined); setStreamPolling(true);
     if (runId) void refreshDetails();
   }, [refreshDetails, runId]);

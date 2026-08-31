@@ -128,11 +128,15 @@ function CollectFields({ provider, prompt, name, workdir, saving, onProvider, on
 
 function CollectModal({ settings, settingsError, defaults, defaultsError, onClose, onOpenSettings, onStart }: CollectModalProps) {
   const [provider, setProvider] = useState<CollectorProvider>(settings?.provider === "fofa" ? "fofa" : "hunter");
+  const [providerTouched, setProviderTouched] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [name, setName] = useState("");
   const [workdir, setWorkdir] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+  useEffect(() => {
+    if (!providerTouched && settings) setProvider(settings.provider === "fofa" ? "fofa" : "hunter");
+  }, [providerTouched, settings]);
   const incomplete = !settings || !providerConfigured(settings, provider);
   const start = async () => {
     const scopeError = validateCollectorScope(provider, prompt);
@@ -150,7 +154,7 @@ function CollectModal({ settings, settingsError, defaults, defaultsError, onClos
     }
   };
   return <Modal title="启动资产收集" onClose={onClose} footer={<><Button disabled={saving} onClick={onClose}>取消</Button><Button className="primary" disabled={saving || incomplete || !defaults} onClick={() => void start()}>启动</Button></>}>
-    <CollectFields provider={provider} prompt={prompt} name={name} workdir={workdir} saving={saving} onProvider={setProvider} onPrompt={setPrompt} onName={setName} onWorkdir={setWorkdir} />
+    <CollectFields provider={provider} prompt={prompt} name={name} workdir={workdir} saving={saving} onProvider={(value) => { setProviderTouched(true); setProvider(value); }} onPrompt={setPrompt} onName={setName} onWorkdir={setWorkdir} />
     <p className="ad-muted">访问模式：{defaults?.approval_mode === "full" ? "继承批量默认：完全访问" : defaults ? "继承批量默认：LLM 自动审批" : "正在读取任务默认设置…"}</p>
     {incomplete ? <Notice action={<Button className="compact" onClick={() => { onClose(); void onOpenSettings(); }}>前往插件设置</Button>}>当前数据源配置不完整，无法启动收集任务。</Notice> : null}
     {settingsError ? <p className="ad-field-error">{settingsError}</p> : null}{defaultsError ? <p className="ad-field-error">{defaultsError}</p> : null}{error ? <p className="ad-field-error">{error}</p> : null}
