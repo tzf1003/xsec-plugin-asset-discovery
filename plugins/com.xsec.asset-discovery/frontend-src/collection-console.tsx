@@ -7,6 +7,11 @@ import { ExecutionProcess } from "./execution-process";
 
 const LIVE_REFRESH_INTERVAL_MS = 4_000;
 type LoadState = "ok" | "error" | "stale";
+type LogLoadOptions = {
+  cursor?: string;
+  mergeLatest?: boolean;
+  isCurrent?: () => boolean;
+};
 
 type ConsoleProps = {
   api: AssetDiscoveryApi;
@@ -86,16 +91,19 @@ function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, ru
     setExecutionError(undefined);
     try { const next = await api.execution(runId); if (!isCurrent()) return "stale"; setExecution(next); return "ok"; } catch (reason) { if (!isCurrent()) return "stale"; setExecutionError(`读取执行过程失败：${String(reason)}`); return "error"; }
   }, [api, beginExecutionRequest, runId]);
-  const loadLogs = useCallback(async (cursor?: string, isCurrent = beginLogsRequest()): Promise<LoadState> => {
+  const loadLogs = useCallback(async ({ cursor, mergeLatest = false, isCurrent = beginLogsRequest() }: LogLoadOptions = {}): Promise<LoadState> => {
     if (!runId || !isCurrent()) return "stale";
     setLogsError(undefined);
     try {
       const next = await api.logs(runId, cursor);
       if (!isCurrent()) return "stale";
-      logCursor.current = next.next_cursor ?? cursor;
-      setLogs((current) => cursor && current
-        ? { ...next, lines: mergeLogLines(current, next), truncated: Boolean(current.truncated || next.truncated) }
-        : next);
+      if (cursor) logCursor.current = next.next_cursor ?? undefined;
+      else if (!logCursor.current) logCursor.current = next.next_cursor ?? undefined;
+      setLogs((current) => {
+        if (cursor && current) return { ...next, lines: mergeLogLines(current, next), truncated: Boolean(current.truncated || next.truncated) };
+        if (mergeLatest && current) return { ...next, lines: mergeLogLines(next, current), next_cursor: logCursor.current ?? null, truncated: Boolean(current.truncated || next.truncated) };
+        return next;
+      });
       return "ok";
     } catch (reason) { if (!isCurrent()) return "stale"; setLogsError(`读取收集日志失败：${String(reason)}`); return "error"; }
   }, [api, beginLogsRequest, runId]);
@@ -104,7 +112,7 @@ function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, ru
     const isCurrent = beginRefreshRequest();
     refreshInFlight.current = true;
     try {
-      const result = await Promise.all([loadExecution(), loadLogs(logCursor.current)]);
+      const result = await Promise.all([loadExecution(), loadLogs({ mergeLatest: true })]);
       if (!isCurrent()) return false;
       const failed = result.includes("error");
       const succeeded = result.every((state) => state === "ok");
@@ -146,7 +154,7 @@ export function CollectionConsole({ api, run, onChanged, onDeleted, onOpenAssets
     {failure ? <Notice action={run.failure_code === "missing_configuration" ? <Button className="compact" onClick={() => void onOpenSettings()}>打开资产发现设置</Button> : undefined}>{failure}</Notice> : null}
     <div className="ad-flow">{stages.map((stage) => <article className={`ad-flow-card ${stage.state}`} key={stage.title}><strong>{stage.title}</strong><small>{stage.text}</small></article>)}</div>
     <Section title="实时执行过程" actions={<span className="ad-muted">{running ? "实时更新" : "执行记录"}</span>}><ExecutionProcess execution={content.execution} error={content.executionError} live={running} onRefresh={() => void content.refreshDetails()} /></Section>
-    <div className="ad-split"><Section title="授权收集范围"><pre className="ad-code">{run.scope_prompt || "未填写范围"}</pre></Section><Section title="进程日志" actions={<Button className="text compact" onClick={() => void content.refreshDetails()}>重新拉取</Button>}><Logs page={content.logs} error={content.logsError} onRefresh={() => void content.refreshDetails()} onMore={() => void content.loadLogs(content.logs?.next_cursor ?? undefined)} /></Section></div>
+    <div className="ad-split"><Section title="授权收集范围"><pre className="ad-code">{run.scope_prompt || "未填写范围"}</pre></Section><Section title="进程日志" actions={<Button className="text compact" onClick={() => void content.refreshDetails()}>重新拉取</Button>}><Logs page={content.logs} error={content.logsError} onRefresh={() => void content.refreshDetails()} onMore={() => void content.loadLogs({ cursor: content.logs?.next_cursor ?? undefined })} /></Section></div>
     <TaskDetails run={run} />
   </div>{deleteOpen ? <ConfirmModal title="删除收集任务" detail="会同时删除任务绑定的资产池条目，且不可恢复。" confirmLabel="删除" danger busy={mutating} onClose={() => setDeleteOpen(false)} onConfirm={() => void remove()} /> : null}</section>;
 }
