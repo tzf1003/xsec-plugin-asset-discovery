@@ -19,11 +19,12 @@ type ConsoleProps = {
 function flow(run: CollectionRun) {
   const bucket = collectionBucket(run.status);
   const terminal = bucket === "completed" || bucket === "failed" || bucket === "cancelled";
+  const completed = bucket === "completed";
   const failed = bucket === "failed" || bucket === "cancelled";
   return [
     { title: "启动收集 Agent", state: "done", text: formatTime(run.created_at) },
-    { title: `查询 ${providerLabel(run.provider)}`, state: bucket === "running" && !run.total ? "active" : run.total ? "done" : failed ? "failed" : "pending", text: "按授权范围检索资产" },
-    { title: "结果入库", state: run.total ? "done" : bucket === "running" ? "pending" : failed ? "skipped" : "pending", text: `${run.total} 条资产` },
+    { title: `查询 ${providerLabel(run.provider)}`, state: bucket === "running" && !run.total ? "active" : completed || run.total ? "done" : failed ? "failed" : "pending", text: "按授权范围检索资产" },
+    { title: "结果入库", state: completed || run.total ? "done" : bucket === "running" ? "pending" : failed ? "skipped" : "pending", text: `${run.total} 条资产` },
     { title: bucket === "cancelled" ? "收集已停止" : bucket === "failed" ? "收集失败" : "收集完成", state: terminal ? (failed ? "failed" : "done") : "pending", text: terminal ? formatTime(run.finished_at) : "等待任务结束" },
   ];
 }
@@ -107,7 +108,7 @@ export function CollectionConsole({ api, run, onChanged, onDeleted, onOpenAssets
     {failure ? <Notice action={run.failure_code === "missing_configuration" ? <Button className="compact" onClick={() => void onOpenSettings()}>打开资产发现设置</Button> : undefined}>{failure}</Notice> : null}
     <div className="ad-flow">{stages.map((stage) => <article className={`ad-flow-card ${stage.state}`} key={stage.title}><strong>{stage.title}</strong><small>{stage.text}</small></article>)}</div>
     <Section title="实时执行过程" actions={<span className="ad-muted">{running ? "实时更新" : "执行记录"}</span>}><ExecutionProcess execution={content.execution} error={content.executionError} live={running} onRefresh={() => void content.refreshDetails()} /></Section>
-    <div className="ad-split"><Section title="授权收集范围"><pre className="ad-code">{run.scope_prompt || "未填写范围"}</pre></Section><Section title="进程日志" actions={<Button className="text compact" onClick={() => void content.loadLogs()}>重新拉取</Button>}><Logs page={content.logs} error={content.logsError} onRefresh={() => void content.loadLogs()} onMore={() => void content.loadLogs(content.logs?.next_cursor ?? undefined)} /></Section></div>
+    <div className="ad-split"><Section title="授权收集范围"><pre className="ad-code">{run.scope_prompt || "未填写范围"}</pre></Section><Section title="进程日志" actions={<Button className="text compact" onClick={() => void content.refreshDetails()}>重新拉取</Button>}><Logs page={content.logs} error={content.logsError} onRefresh={() => void content.refreshDetails()} onMore={() => void content.loadLogs(content.logs?.next_cursor ?? undefined)} /></Section></div>
     <TaskDetails run={run} />
   </div>{deleteOpen ? <ConfirmModal title="删除收集任务" detail="会同时删除任务绑定的资产池条目，且不可恢复。" confirmLabel="删除" danger busy={mutating} onClose={() => setDeleteOpen(false)} onConfirm={() => void remove()} /> : null}</section>;
 }

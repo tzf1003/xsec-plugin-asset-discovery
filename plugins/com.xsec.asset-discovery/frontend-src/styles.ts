@@ -48,6 +48,7 @@ button:disabled { cursor: not-allowed; opacity: .56; }
 .ad-status.running { color: var(--xsec-status-info); background: var(--xsec-accent-soft); }
 .ad-status.completed { color: var(--xsec-status-success); background: color-mix(in srgb, var(--xsec-status-success) 12%, transparent); }
 .ad-status.failed, .ad-status.cancelled { color: var(--xsec-status-error); background: color-mix(in srgb, var(--xsec-status-error) 12%, transparent); }
+.ad-status.other { color: var(--xsec-text-secondary); background: var(--xsec-surface-container); }
 .ad-console { min-width: 0; overflow: auto; }
 .ad-console-header { padding: 20px 20px 16px; border-bottom: 1px solid var(--xsec-border-subtle); }
 .ad-console-header h2 { margin: 0; font-size: 18px; }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssetDiscoveryApi } from "./host";
 import type { AssetFilters, AssetPage, CollectionRun, Project } from "./types";
 import { formatTime, providerLabel, runTitle } from "./utils";
@@ -50,11 +50,14 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
   const [projectId, setProjectId] = useState("");
   const [mutating, setMutating] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const latestFilters = useRef(filters);
+  latestFilters.current = filters;
 
   const load = useCallback(async () => {
     setLoading(true); setError(undefined); setPage(undefined);
     try {
       const next = await api.assets(filters);
+      if (latestFilters.current !== filters) return;
       const lastPage = Math.max(1, Math.ceil(next.total / filters.pageSize));
       if (!next.items.length && filters.page > lastPage) {
         setFilters((current) => ({ ...current, page: lastPage }));
@@ -62,7 +65,11 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
       }
       setPage(next);
       setSelected([]);
-    } catch (reason) { setError(`读取资产池失败：${String(reason)}`); } finally { setLoading(false); }
+    } catch (reason) {
+      if (latestFilters.current === filters) setError(`读取资产池失败：${String(reason)}`);
+    } finally {
+      if (latestFilters.current === filters) setLoading(false);
+    }
   }, [api, filters]);
 
   useEffect(() => { void load(); }, [load]);
@@ -114,7 +121,7 @@ function AssetTable({ page, filters, selected, mutating, onSelected, onUpdate }:
   const lastPage = Math.max(1, Math.ceil(page.total / filters.pageSize));
   const toggleAsset = (id: string, checked: boolean) => onSelected(checked ? [...selected, id] : selected.filter((item) => item !== id));
   return <>
-    <div className="ad-table-wrap"><table className="ad-table"><thead><tr><th><input aria-label="选择当前页资产" type="checkbox" checked={allSelected} onChange={(event) => onSelected(event.target.checked ? page.items.map((asset) => asset.id) : [])} /></th><th>类型</th><th>资产</th><th>Host</th><th>来源</th><th>导入状态</th><th>发现时间</th></tr></thead><tbody>{page.items.map((asset) => <tr key={asset.id}><td><input aria-label={`选择 ${asset.raw_value}`} type="checkbox" checked={selected.includes(asset.id)} onChange={(event) => toggleAsset(asset.id, event.target.checked)} /></td><td>{asset.type}</td><td className="ellipsis" title={asset.raw_value}><strong>{asset.raw_value}</strong></td><td className="ellipsis" title={asset.host ?? ""}>{asset.host || "—"}</td><td>{asset.source_provider ? providerLabel(asset.source_provider) : "—"}</td><td><StatusBadge status={asset.imported ? "completed" : "pending"} /></td><td>{formatTime(asset.created_at)}</td></tr>)}</tbody></table></div>
+    <div className="ad-table-wrap"><table className="ad-table"><thead><tr><th><input aria-label="选择当前页资产" type="checkbox" checked={allSelected} onChange={(event) => onSelected(event.target.checked ? page.items.map((asset) => asset.id) : [])} /></th><th>类型</th><th>资产</th><th>Host</th><th>来源</th><th>导入状态</th><th>发现时间</th></tr></thead><tbody>{page.items.map((asset) => <tr key={asset.id}><td><input aria-label={`选择 ${asset.raw_value}`} type="checkbox" checked={selected.includes(asset.id)} onChange={(event) => toggleAsset(asset.id, event.target.checked)} /></td><td>{asset.type}</td><td className="ellipsis" title={asset.raw_value}><strong>{asset.raw_value}</strong></td><td className="ellipsis" title={asset.host ?? ""}>{asset.host || "—"}</td><td>{asset.source_provider ? providerLabel(asset.source_provider) : "—"}</td><td><span className={`ad-status ${asset.imported ? "completed" : "other"}`}>{asset.imported ? "已导入" : "未导入"}</span></td><td>{formatTime(asset.created_at)}</td></tr>)}</tbody></table></div>
     <div className="ad-pagination"><span>共 {page.total} 条</span><select className="ad-select" value={filters.pageSize} disabled={mutating} onChange={(event) => onUpdate({ pageSize: Number(event.target.value) })}><option value="25">25 / 页</option><option value="50">50 / 页</option><option value="100">100 / 页</option></select><Button className="compact" disabled={filters.page <= 1 || mutating} onClick={() => onUpdate({ page: filters.page - 1 })}>上一页</Button><span>{filters.page} / {lastPage}</span><Button className="compact" disabled={filters.page >= lastPage || mutating} onClick={() => onUpdate({ page: filters.page + 1 })}>下一页</Button></div>
   </>;
 }
