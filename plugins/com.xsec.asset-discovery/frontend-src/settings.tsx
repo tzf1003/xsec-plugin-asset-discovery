@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssetDiscoveryApi } from "./host";
 import type { CollectorProvider, CollectorSettings } from "./types";
-import { Button, ConfirmModal, ErrorState } from "./ui";
+import { Button, ConfirmModal } from "./ui";
 
 type CredentialKind = "hunter" | "fofa" | "tianyan";
 type Credentials = Record<CredentialKind, string>;
@@ -40,32 +40,39 @@ function normalizedDraft(draft: SettingsDraft): SettingsDraft {
 function useSettingsReader(api: AssetDiscoveryApi) {
   const [settings, setSettings] = useState<CollectorSettings>();
   const [draft, setDraft] = useState<SettingsDraft>();
+  const [isSettingsReady, setSettingsReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const load = useCallback(async (replaceDraft = true) => {
+    let settingsReady = false;
     setLoading(true);
     setError(undefined);
     try {
       const next = await api.settings();
       setSettings(next);
       setDraft((current) => replaceDraft || !current ? draftFrom(next) : current);
+      settingsReady = true;
     } catch (reason) {
       setError(`读取资产发现设置失败：${String(reason)}`);
     } finally {
+      setSettingsReady(settingsReady);
       setLoading(false);
     }
+    if (!settingsReady) return false;
+    return true;
   }, [api]);
   useEffect(() => { void load(); }, [load]);
   const update = <K extends keyof SettingsDraft>(key: K, value: SettingsDraft[K]) => {
     setDraft((current) => current ? { ...current, [key]: value } : current);
   };
-  return { settings, draft, loading, error, notice, load, update, setSettings, setDraft, setError, setNotice };
+  return { settings, draft, isSettingsReady, loading, error, notice, load, update, setSettings, setDraft, setError, setNotice };
 }
 
-function useSettingsSave({ api, draft, setSettings, setDraft, setError, setNotice }: {
+function useSettingsSave({ api, draft, settingsReady, setSettings, setDraft, setError, setNotice }: {
   api: AssetDiscoveryApi;
   draft?: SettingsDraft;
+  settingsReady: boolean;
   setSettings: (value: CollectorSettings) => void;
   setDraft: (value: SettingsDraft) => void;
   setError: (value: string | undefined) => void;
@@ -73,7 +80,7 @@ function useSettingsSave({ api, draft, setSettings, setDraft, setError, setNotic
 }) {
   const [saving, setSaving] = useState(false);
   const save = async () => {
-    if (!draft) return;
+    if (!settingsReady || !draft) return;
     setSaving(true);
     setError(undefined);
     try {
@@ -184,11 +191,20 @@ function CredentialFields({ settings, credentials, saving, onChange, onSave, onC
 
 export function SettingsPage({ api }: { api: AssetDiscoveryApi }) {
   const reader = useSettingsReader(api);
-  const settingsSave = useSettingsSave({ api, draft: reader.draft, setSettings: reader.setSettings, setDraft: reader.setDraft, setError: reader.setError, setNotice: reader.setNotice });
-  const credentials = useCredentials({ api, refresh: () => reader.load(false), setError: reader.setError, setNotice: reader.setNotice });
+  const retryButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const retryButton = retryButtonRef.current;
+    if (!retryButton) return;
+    retryButton.onclick = () => { void reader.load(); };
+    if (reader.loading) retryButton.disabled = true;
+    else retryButton.disabled = false;
+    return () => { retryButton.onclick = null; };
+  }, [reader.error, reader.loading, reader.load]);
+  const settingsSave = useSettingsSave({ api, draft: reader.draft, settingsReady: reader.isSettingsReady, setSettings: reader.setSettings, setDraft: reader.setDraft, setError: reader.setError, setNotice: reader.setNotice });
+  const credentials = useCredentials({ api, refresh: async () => { await reader.load(false); }, setError: reader.setError, setNotice: reader.setNotice });
   const saving = settingsSave.saving || credentials.saving;
   if (reader.loading && !reader.settings) return <div className="ad-app ad-settings"><p className="ad-muted">正在读取资产发现设置…</p></div>;
-  if (reader.error && !reader.settings) return <div className="ad-app ad-settings"><ErrorState error={reader.error} onRetry={() => void reader.load()} /></div>;
+  if (reader.error && !reader.settings) return <div className="ad-app ad-settings"><div className="ad-error"><p>{reader.error}</p><button ref={retryButtonRef} className="ad-button compact" type="button" disabled={reader.loading}>重新读取</button></div></div>;
   if (!reader.settings || !reader.draft) throw new Error("资产发现设置状态不完整");
   return <main className="ad-app ad-settings">
     <p className="ad-eyebrow">ASSET DISCOVERY SETTINGS</p><h1 className="ad-title">资产发现</h1>
@@ -198,7 +214,7 @@ export function SettingsPage({ api }: { api: AssetDiscoveryApi }) {
       <CredentialFields settings={reader.settings} credentials={credentials.credentials} saving={saving} onChange={credentials.setCredential} onSave={(kind) => void credentials.save(kind)} onClear={credentials.setClearKind} />
       <p className="ad-muted">当前 Skill 解析：Hunter {reader.settings.resolvedHunterSkillPath || "—"}；FOFA {reader.settings.resolvedFofaSkillPath || "—"}</p>
       {reader.error ? <p className="ad-field-error">{reader.error}</p> : null}{reader.notice ? <p className="ad-muted">{reader.notice}</p> : null}
-      <div className="ad-form-actions"><Button className="primary" disabled={saving} onClick={() => void settingsSave.save()}>保存设置</Button><Button disabled={saving} onClick={() => void reader.load()}>重新读取设置</Button></div>
+      <div className="ad-form-actions"><Button className="primary" disabled={saving || !reader.isSettingsReady} onClick={() => void settingsSave.save()}>保存设置</Button><Button disabled={saving} onClick={() => void reader.load()}>重新读取设置</Button></div>
     </div>
     {credentials.clearKind ? <ConfirmModal title="清除 API 密钥" detail="清除后新的收集任务将不能使用该密钥。" confirmLabel="清除" danger busy={saving} onClose={() => credentials.setClearKind(undefined)} onConfirm={() => void credentials.clear()} /> : null}
   </main>;
