@@ -67,13 +67,13 @@ function mergeLogLines(current: ExecutionLogPage, next: ExecutionLogPage) {
   })];
 }
 
-function hasNewLogLines(current: ExecutionLogPage, next: ExecutionLogPage) {
+function hasLogPageGap(current: ExecutionLogPage, next: ExecutionLogPage) {
   const seen = new Set(current.lines.map(logLineKey));
-  return next.lines.some((line) => !seen.has(logLineKey(line)));
+  return next.lines.every((line) => !seen.has(logLineKey(line)));
 }
 
 function updateLatestLogCursor(cursor: { current: string | null | undefined }, current: ExecutionLogPage | undefined, next: ExecutionLogPage, adopt: boolean) {
-  if (cursor.current === undefined || adopt || (cursor.current === null && current && next.next_cursor && hasNewLogLines(current, next))) cursor.current = next.next_cursor;
+  if (cursor.current === undefined || adopt || (cursor.current === null && current && next.next_cursor && hasLogPageGap(current, next))) cursor.current = next.next_cursor;
 }
 
 function mergeLogPage(current: ExecutionLogPage | undefined, next: ExecutionLogPage, cursor: string | null | undefined, append: boolean, mergeLatest: boolean) {
