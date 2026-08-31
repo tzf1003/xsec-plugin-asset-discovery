@@ -77,6 +77,8 @@ function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, ru
   const [logsError, setLogsError] = useState<string>();
   const [streamPolling, setStreamPolling] = useState(true);
   const logCursor = useRef<string>();
+  const refreshInFlight = useRef(false);
+  const beginRefreshRequest = useRequestGuard(runId);
   const beginExecutionRequest = useRequestGuard(runId);
   const beginLogsRequest = useRequestGuard(runId);
   const loadExecution = useCallback(async (isCurrent = beginExecutionRequest()): Promise<LoadState> => {
@@ -97,14 +99,22 @@ function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, ru
       return "ok";
     } catch (reason) { if (!isCurrent()) return "stale"; setLogsError(`读取收集日志失败：${String(reason)}`); return "error"; }
   }, [api, beginLogsRequest, runId]);
-  const refreshDetails = useCallback(async () => {
-    const result = await Promise.all([loadExecution(), loadLogs(logCursor.current)]);
-    const failed = result.includes("error");
-    const succeeded = result.every((state) => state === "ok");
-    if (failed) setStreamPolling(false);
-    if (succeeded) setStreamPolling(true);
-    return !failed;
-  }, [loadExecution, loadLogs]);
+  const refreshDetails = useCallback(async (supersede = true) => {
+    if (!supersede && refreshInFlight.current) return true;
+    const isCurrent = beginRefreshRequest();
+    refreshInFlight.current = true;
+    try {
+      const result = await Promise.all([loadExecution(), loadLogs(logCursor.current)]);
+      if (!isCurrent()) return false;
+      const failed = result.includes("error");
+      const succeeded = result.every((state) => state === "ok");
+      if (failed) setStreamPolling(false);
+      if (succeeded) setStreamPolling(true);
+      return !failed;
+    } finally {
+      if (isCurrent()) refreshInFlight.current = false;
+    }
+  }, [beginRefreshRequest, loadExecution, loadLogs]);
 
   useEffect(() => {
     logCursor.current = undefined;
@@ -113,7 +123,7 @@ function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, ru
   }, [refreshDetails, runId]);
   useEffect(() => {
     if (!running || !streamPolling) return;
-    const timer = window.setInterval(() => { void refreshDetails(); }, LIVE_REFRESH_INTERVAL_MS);
+    const timer = window.setInterval(() => { void refreshDetails(false); }, LIVE_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [refreshDetails, running, streamPolling]);
   useTerminalSnapshot(runId, running, refreshDetails);
