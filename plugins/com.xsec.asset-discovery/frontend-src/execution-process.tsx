@@ -4,6 +4,7 @@ import { printableToolValue, toolLabel } from "./utils";
 import { Button, EmptyState, ErrorState, Notice } from "./ui";
 
 const BOTTOM_TOLERANCE_PX = 28;
+const ENTRY_FINGERPRINT_SEPARATOR = "\n--- xsec-entry ---\n";
 
 type StreamEntry =
   | { key: string; sequence: number; kind: "message"; message: SessionMessage }
@@ -35,7 +36,7 @@ function entryFingerprint(entries: StreamEntry[]): string {
   return entries.map((entry) => entry.kind === "message"
     ? `${entry.key}:${entry.message.thought}:${entry.message.text}:${entry.message.completed}`
     : `${entry.key}:${entry.tool.status}:${printableToolValue(entry.tool.raw_input)}:${printableToolValue(entry.tool.content)}:${printableToolValue(entry.tool.raw_output)}`)
-    .join("\u0001");
+    .join(ENTRY_FINGERPRINT_SEPARATOR);
 }
 
 function ToolDisclosure({ tool }: { tool: ToolCall }) {
