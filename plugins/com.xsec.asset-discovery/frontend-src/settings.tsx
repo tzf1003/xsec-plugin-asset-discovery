@@ -44,20 +44,26 @@ function useSettingsReader(api: AssetDiscoveryApi) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const requestGeneration = useRef(0);
   const load = useCallback(async (replaceDraft = true) => {
+    const generation = ++requestGeneration.current;
     let settingsReady = false;
     setLoading(true);
+    setSettingsReady(false);
     setError(undefined);
     try {
       const next = await api.settings();
+      if (generation !== requestGeneration.current) return false;
       setSettings(next);
       setDraft((current) => replaceDraft || !current ? draftFrom(next) : current);
       settingsReady = true;
     } catch (reason) {
-      setError(`读取资产发现设置失败：${String(reason)}`);
+      if (generation === requestGeneration.current) setError(`读取资产发现设置失败：${String(reason)}`);
     } finally {
-      setSettingsReady(settingsReady);
-      setLoading(false);
+      if (generation === requestGeneration.current) {
+        setSettingsReady(settingsReady);
+        setLoading(false);
+      }
     }
     if (!settingsReady) return false;
     return true;
@@ -214,7 +220,7 @@ export function SettingsPage({ api }: { api: AssetDiscoveryApi }) {
       <CredentialFields settings={reader.settings} credentials={credentials.credentials} saving={saving} onChange={credentials.setCredential} onSave={(kind) => void credentials.save(kind)} onClear={credentials.setClearKind} />
       <p className="ad-muted">当前 Skill 解析：Hunter {reader.settings.resolvedHunterSkillPath || "—"}；FOFA {reader.settings.resolvedFofaSkillPath || "—"}</p>
       {reader.error ? <p className="ad-field-error">{reader.error}</p> : null}{reader.notice ? <p className="ad-muted">{reader.notice}</p> : null}
-      <div className="ad-form-actions"><Button className="primary" disabled={saving || !reader.isSettingsReady} onClick={() => void settingsSave.save()}>保存设置</Button><Button disabled={saving} onClick={() => void reader.load()}>重新读取设置</Button></div>
+      <div className="ad-form-actions"><Button className="primary" disabled={saving || !reader.isSettingsReady} onClick={() => void settingsSave.save()}>保存设置</Button><Button disabled={saving || reader.loading} onClick={() => void reader.load()}>重新读取设置</Button></div>
     </div>
     {credentials.clearKind ? <ConfirmModal title="清除 API 密钥" detail="清除后新的收集任务将不能使用该密钥。" confirmLabel="清除" danger busy={saving} onClose={() => credentials.setClearKind(undefined)} onConfirm={() => void credentials.clear()} /> : null}
   </main>;
