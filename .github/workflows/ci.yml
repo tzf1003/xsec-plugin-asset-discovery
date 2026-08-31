@@ -27,3 +27,5 @@ jobs:
           test -f plugins/com.xsec.asset-discovery/.codex-plugin/plugin.json
       - name: Build the isolated frontend artifact
         run: pnpm install --frozen-lockfile && pnpm check
+      - name: Verify the tracked frontend artifact
+        run: git diff --exit-code -- plugins/com.xsec.asset-discovery/com.xsec.desktop/frontend/index.js

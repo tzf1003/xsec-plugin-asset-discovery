@@ -33,6 +33,12 @@ export function statusLabel(status: string): string {
   return labels[collectionBucket(status)] ?? (status || "未知");
 }
 
+export function approvalModeLabel(mode?: "auto" | "full"): string {
+  if (mode === "full") return "完全访问";
+  if (mode === "auto") return "LLM 自动审批";
+  return "未记录";
+}
+
 export function formatTime(value: number | null | undefined): string {
   if (!value || value <= 0) return "—";
   return new Date(value).toLocaleString("zh-CN", { hour12: false });

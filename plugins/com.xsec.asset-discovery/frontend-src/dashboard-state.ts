@@ -9,15 +9,13 @@ function useRuns(api: AssetDiscoveryApi) {
   const [runs, setRuns] = useState<CollectionRun[]>([]);
   const [runsLoading, setRunsLoading] = useState(true);
   const [runsError, setRunsError] = useState<string>();
-  const loadRuns = useCallback(async (): Promise<boolean> => {
+  const loadRuns = useCallback(async (): Promise<void> => {
     setRunsLoading(true);
     setRunsError(undefined);
     try {
       setRuns(await api.runs());
-      return true;
     } catch (reason) {
       setRunsError(`读取收集任务失败：${String(reason)}`);
-      return false;
     } finally {
       setRunsLoading(false);
     }
@@ -49,14 +47,10 @@ function useCollectorSetup(api: AssetDiscoveryApi) {
   return { defaults, defaultsError, settings, settingsError, loadDefaults, loadSettings };
 }
 
-function useActiveRunRefresh(runs: CollectionRun[], loadRuns: () => Promise<boolean>) {
+function useActiveRunRefresh(runs: CollectionRun[], loadRuns: () => Promise<void>) {
   useEffect(() => {
     if (!runs.some((run) => collectionBucket(run.status) === "running")) return;
-    const timer = window.setInterval(() => {
-      void loadRuns().then((healthy) => {
-        if (!healthy) window.clearInterval(timer);
-      });
-    }, RUN_REFRESH_INTERVAL_MS);
+    const timer = window.setInterval(() => { void loadRuns(); }, RUN_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [loadRuns, runs]);
 }
