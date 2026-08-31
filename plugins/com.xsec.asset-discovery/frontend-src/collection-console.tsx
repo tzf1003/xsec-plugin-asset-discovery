@@ -6,6 +6,7 @@ import { ConfirmModal, Button, EmptyState, ErrorState, Notice, Section, StatusBa
 import { ExecutionProcess } from "./execution-process";
 
 const LIVE_REFRESH_INTERVAL_MS = 4_000;
+const LIVE_LEGACY_LOG_ID_PREFIX = "legacy-live";
 type LoadState = "ok" | "error" | "stale";
 type LogLoadOptions = {
   cursor?: string;
@@ -72,6 +73,35 @@ function hasLogPageGap(current: ExecutionLogPage, next: ExecutionLogPage) {
   return next.lines.every((line) => !seen.has(logLineKey(line)));
 }
 
+function longestLegacyRun(current: ExecutionLogPage, next: ExecutionLogPage) {
+  let best = { currentStart: 0, nextStart: 0, size: 0 };
+  const previousLines = current.lines.slice(0, next.lines.length);
+  let previous = Array(next.lines.length).fill(0);
+  for (let currentIndex = 0; currentIndex < previousLines.length; currentIndex += 1) {
+    const lengths = Array(next.lines.length).fill(0);
+    for (let nextIndex = 0; nextIndex < next.lines.length; nextIndex += 1) {
+      const currentLine = previousLines[currentIndex]; const nextLine = next.lines[nextIndex];
+      if (!currentLine.legacy || !nextLine.legacy || currentLine.text !== nextLine.text) continue;
+      const size = (previous[nextIndex - 1] ?? 0) + 1;
+      lengths[nextIndex] = size;
+      if (size > best.size) best = { currentStart: currentIndex - size + 1, nextStart: nextIndex - size + 1, size };
+    }
+    previous = lengths;
+  }
+  return best;
+}
+
+function stabilizeLiveLegacyPage(current: ExecutionLogPage | undefined, next: ExecutionLogPage, identity: { current: number }) {
+  if (!next.lines.some((line) => line.legacy)) return next;
+  const match = current ? longestLegacyRun(current, next) : { currentStart: 0, nextStart: 0, size: 0 };
+  const lines = next.lines.map((line, index) => {
+    const offset = index - match.nextStart;
+    const prior = offset >= 0 && offset < match.size ? current?.lines[match.currentStart + offset] : undefined;
+    return line.legacy && prior?.identity ? { ...line, identity: prior.identity } : line.legacy ? { ...line, identity: `${LIVE_LEGACY_LOG_ID_PREFIX}-${++identity.current}` } : line;
+  });
+  return { ...next, lines };
+}
+
 function updateLatestLogCursor(cursor: { current: string | null | undefined }, current: ExecutionLogPage | undefined, next: ExecutionLogPage, adopt: boolean) {
   if (cursor.current === undefined || adopt || (cursor.current === null && current && next.next_cursor && hasLogPageGap(current, next))) cursor.current = next.next_cursor;
 }
@@ -107,6 +137,7 @@ function useLogStream(api: AssetDiscoveryApi, runId: string | undefined) {
   const [logsError, setLogsError] = useState<string>();
   const logsRef = useRef<ExecutionLogPage>();
   const logCursor = useRef<string | null>();
+  const legacyIdentity = useRef(0);
   const logQueue = useRef(Promise.resolve());
   const beginLatestLogsRequest = useRequestGuard(runId);
   const beginPagedLogsRequest = useRequestGuard(runId);
@@ -114,9 +145,10 @@ function useLogStream(api: AssetDiscoveryApi, runId: string | undefined) {
     if (!runId || !isCurrent()) return "stale";
     setLogsError(undefined);
     try {
-      const next = await api.logs(runId, cursor);
+      const received = await api.logs(runId, cursor);
       if (!isCurrent()) return "stale";
       const current = logsRef.current;
+      const next = mergeLatest ? stabilizeLiveLegacyPage(current, received, legacyIdentity) : received;
       if (cursor) logCursor.current = next.next_cursor;
       else updateLatestLogCursor(logCursor, current, next, adoptLatestCursor);
       const page = mergeLogPage(current, next, logCursor.current, Boolean(cursor), mergeLatest);
@@ -139,6 +171,7 @@ function useLogStream(api: AssetDiscoveryApi, runId: string | undefined) {
   useEffect(() => {
     logQueue.current = Promise.resolve();
     logCursor.current = undefined;
+    legacyIdentity.current = 0;
     logsRef.current = undefined;
     setLogs(undefined); setLogsError(undefined);
   }, [runId]);

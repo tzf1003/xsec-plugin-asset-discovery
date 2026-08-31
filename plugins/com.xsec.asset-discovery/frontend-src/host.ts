@@ -42,8 +42,11 @@ function asRecord<T>(value: unknown): T {
   return value as T;
 }
 
-function asExecutionLine(value: unknown, index: number, pageKey: string): ExecutionLine {
-  if (typeof value === "string") return { timestamp: 0, direction: "process", text: value, identity: `legacy-${pageKey}-${index}` };
+function asExecutionLine(value: unknown, index: number, cursor?: string): ExecutionLine {
+  if (typeof value === "string") {
+    const line = { timestamp: 0, direction: "process" as const, text: value, legacy: true };
+    return cursor ? { ...line, identity: `legacy-page-${cursor}-${index}` } : line;
+  }
   const line = asRecord<Record<string, unknown>>(value);
   if (typeof line.timestamp !== "number" || !Number.isFinite(line.timestamp) || typeof line.text !== "string") throw new Error("Host RPC 返回了无效日志行");
   if (line.direction !== "client_to_agent" && line.direction !== "agent_to_client" && line.direction !== "process") throw new Error("Host RPC 返回了无效日志方向");
@@ -54,8 +57,7 @@ function asExecutionLogPage(value: unknown, cursor?: string): ExecutionLogPage {
   const page = asRecord<Record<string, unknown>>(value);
   if (!Array.isArray(page.lines) || (page.next_cursor !== null && typeof page.next_cursor !== "string")) throw new Error("Host RPC 返回了无效日志页");
   if (page.truncated !== undefined && typeof page.truncated !== "boolean") throw new Error("Host RPC 返回了无效日志截断状态");
-  const pageKey = cursor ?? "latest";
-  return { lines: page.lines.map((line, index) => asExecutionLine(line, index, pageKey)), next_cursor: page.next_cursor, truncated: page.truncated };
+  return { lines: page.lines.map((line, index) => asExecutionLine(line, index, cursor)), next_cursor: page.next_cursor, truncated: page.truncated };
 }
 
 function createRunApi(host: PluginHost) {

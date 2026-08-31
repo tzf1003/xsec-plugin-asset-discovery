@@ -69,6 +69,7 @@ export type ExecutionLine = {
   direction: "client_to_agent" | "agent_to_client" | "process";
   text: string;
   identity?: string;
+  legacy?: boolean;
 };
 
 export type ExecutionLogPage = {
