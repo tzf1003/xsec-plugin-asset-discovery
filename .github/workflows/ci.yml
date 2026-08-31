@@ -14,7 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
       - name: Require the dual plugin manifests
         run: |
           test -f plugins/com.xsec.asset-discovery/plugin.json
           test -f plugins/com.xsec.asset-discovery/.codex-plugin/plugin.json
+      - name: Build the isolated frontend artifact
+        run: pnpm install --frozen-lockfile && pnpm check
