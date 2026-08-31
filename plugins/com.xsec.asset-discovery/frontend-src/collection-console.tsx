@@ -51,8 +51,13 @@ function ConsoleHeader({ run, mutating, onStop, onOpenAssets, onRefresh, onDelet
 }
 
 function mergeLogLines(current: ExecutionLogPage, next: ExecutionLogPage) {
-  const lines = [...current.lines, ...next.lines];
-  return lines.filter((line, index) => lines.findIndex((item) => item.timestamp === line.timestamp && item.direction === line.direction && item.text === line.text) === index);
+  const seen = new Set(current.lines.map((line) => `${line.timestamp}\u0000${line.direction}\u0000${line.text}`));
+  return [...current.lines, ...next.lines.filter((line) => {
+    const key = `${line.timestamp}\u0000${line.direction}\u0000${line.text}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  })];
 }
 
 function useRequestGuard(runId?: string) {
@@ -81,7 +86,7 @@ function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, ru
   const [executionError, setExecutionError] = useState<string>();
   const [logsError, setLogsError] = useState<string>();
   const [streamPolling, setStreamPolling] = useState(true);
-  const logCursor = useRef<string>();
+  const logCursor = useRef<string | null>();
   const refreshInFlight = useRef(false);
   const beginRefreshRequest = useRequestGuard(runId);
   const beginExecutionRequest = useRequestGuard(runId);
@@ -97,8 +102,8 @@ function useConsoleContent(api: AssetDiscoveryApi, runId: string | undefined, ru
     try {
       const next = await api.logs(runId, cursor);
       if (!isCurrent()) return "stale";
-      if (cursor) logCursor.current = next.next_cursor ?? undefined;
-      else if (!logCursor.current) logCursor.current = next.next_cursor ?? undefined;
+      if (cursor) logCursor.current = next.next_cursor;
+      else if (logCursor.current === undefined) logCursor.current = next.next_cursor;
       setLogs((current) => {
         if (cursor && current) return { ...next, lines: mergeLogLines(current, next), truncated: Boolean(current.truncated || next.truncated) };
         if (mergeLatest && current) return { ...next, lines: mergeLogLines(next, current), next_cursor: logCursor.current ?? null, truncated: Boolean(current.truncated || next.truncated) };
