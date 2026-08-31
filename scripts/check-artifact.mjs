@@ -12,6 +12,6 @@ const packageMetadata = JSON.parse(await readFile(packagePath, "utf8"));
 if (!source.includes("export function activate(host)") || /from\s*["']\.?\//.test(source)) {
   throw new Error("资产发现前端制品必须是单一 ESM 模块");
 }
-if (manifest.version !== "1.3.1" || codexManifest.version !== manifest.version || packageMetadata.version !== manifest.version) {
-  throw new Error("资产发现发布元数据必须使用一致的 1.3.1 版本");
+if (codexManifest.version !== manifest.version || packageMetadata.version !== manifest.version) {
+  throw new Error("资产发现发布元数据必须使用一致版本");
 }
