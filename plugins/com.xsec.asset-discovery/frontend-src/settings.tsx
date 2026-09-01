@@ -82,13 +82,14 @@ function useSettingsSave({ api, draft, settingsReady, setSettings, setDraft, set
   setSettings: (value: CollectorSettings) => void;
   setDraft: (value: SettingsDraft) => void;
   setError: (value: string | undefined) => void;
-  setNotice: (value: string) => void;
+  setNotice: (value: string | undefined) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const save = async () => {
     if (!settingsReady || !draft) return;
     setSaving(true);
     setError(undefined);
+    setNotice(undefined);
     try {
       const next = await api.saveSettings(normalizedDraft(draft));
       setSettings(next);

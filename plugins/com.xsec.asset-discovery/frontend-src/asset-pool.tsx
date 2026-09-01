@@ -51,6 +51,7 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
   const [mutating, setMutating] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const latestFilters = useRef(filters);
+  const projectRequestGeneration = useRef(0);
   latestFilters.current = filters;
 
   const load = useCallback(async () => {
@@ -77,8 +78,14 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
 
   const update = (next: Partial<AssetFilters>) => setFilters((current) => ({ ...current, ...next, page: next.page ?? 1 }));
   const openImport = async () => {
-    setImportOpen(true); setProjectsError(undefined);
-    try { setProjects(await api.projects()); } catch (reason) { setProjectsError(`读取项目列表失败：${String(reason)}`); }
+    const generation = ++projectRequestGeneration.current;
+    setImportOpen(true); setProjectId(""); setProjects(undefined); setProjectsError(undefined);
+    try {
+      const next = await api.projects();
+      if (generation === projectRequestGeneration.current) setProjects(next);
+    } catch (reason) {
+      if (generation === projectRequestGeneration.current) setProjectsError(`读取项目列表失败：${String(reason)}`);
+    }
   };
   const confirmImport = async () => {
     if (!projectId) { setProjectsError("请选择目标项目。"); return; }
