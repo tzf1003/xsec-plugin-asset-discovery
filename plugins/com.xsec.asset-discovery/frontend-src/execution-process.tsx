@@ -53,6 +53,15 @@ function entryFingerprint(entries: StreamEntry[]): string {
   return entries.map(entryVersion).join(ENTRY_FINGERPRINT_SEPARATOR);
 }
 
+function prunePendingKeys(pendingKeys: Set<string>, entries: StreamEntry[]): boolean {
+  const currentKeys = new Set(entries.map((entry) => entry.key));
+  const count = pendingKeys.size;
+  pendingKeys.forEach((key) => {
+    if (!currentKeys.has(key)) pendingKeys.delete(key);
+  });
+  return pendingKeys.size !== count;
+}
+
 function ToolDisclosure({ tool }: { tool: ToolCall }) {
   const output = tool.content ?? tool.raw_output;
   const status = tool.status?.trim() || "进行中";
@@ -97,11 +106,19 @@ function useFollowLatest(entries: StreamEntry[], fingerprint: string, sessionId:
       .map((entry) => entry.key);
     priorFingerprintRef.current = fingerprint;
     priorVersionsRef.current = new Map(entries.map((entry) => [entry.key, entryVersion(entry)]));
-    if (!changed || !entries.length) return;
+    if (!changed) return;
+    const pruned = prunePendingKeys(pendingKeysRef.current, entries);
+    if (!entries.length) {
+      if (pruned) setPendingCount(0);
+      return;
+    }
     const stream = streamRef.current;
     if (live && followingRef.current && stream) stream.scrollTop = stream.scrollHeight;
-    if (live && !initial && !followingRef.current && updatedKeys.length) {
+    const shouldCountUpdates = live && !initial && !followingRef.current;
+    if (shouldCountUpdates && updatedKeys.length) {
       updatedKeys.forEach((key) => pendingKeysRef.current.add(key));
+    }
+    if (pruned || (shouldCountUpdates && updatedKeys.length)) {
       setPendingCount(pendingKeysRef.current.size);
     }
   }, [entries, fingerprint, live]);
