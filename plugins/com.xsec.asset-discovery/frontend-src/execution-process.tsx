@@ -32,11 +32,14 @@ function isNearBottom(node: HTMLElement): boolean {
   return node.scrollHeight - node.clientHeight - node.scrollTop <= BOTTOM_TOLERANCE_PX;
 }
 
-function entryFingerprint(entries: StreamEntry[]): string {
-  return entries.map((entry) => entry.kind === "message"
+function entryVersion(entry: StreamEntry): string {
+  return entry.kind === "message"
     ? `${entry.key}:${entry.message.thought}:${entry.message.text}:${entry.message.completed}`
-    : `${entry.key}:${entry.tool.status}:${printableToolValue(entry.tool.raw_input)}:${printableToolValue(entry.tool.content)}:${printableToolValue(entry.tool.raw_output)}`)
-    .join(ENTRY_FINGERPRINT_SEPARATOR);
+    : `${entry.key}:${entry.tool.status}:${printableToolValue(entry.tool.raw_input)}:${printableToolValue(entry.tool.content)}:${printableToolValue(entry.tool.raw_output)}`;
+}
+
+function entryFingerprint(entries: StreamEntry[]): string {
+  return entries.map(entryVersion).join(ENTRY_FINGERPRINT_SEPARATOR);
 }
 
 function ToolDisclosure({ tool }: { tool: ToolCall }) {
@@ -63,26 +66,26 @@ function useFollowLatest(entries: StreamEntry[], fingerprint: string, sessionId:
   const streamRef = useRef<HTMLDivElement>(null);
   const followingRef = useRef(true);
   const priorFingerprintRef = useRef<string>();
-  const priorKeysRef = useRef<Set<string>>(new Set());
+  const priorVersionsRef = useRef<Map<string, string>>(new Map());
   const [pendingCount, setPendingCount] = useState(0);
 
   useLayoutEffect(() => {
     followingRef.current = true;
     priorFingerprintRef.current = undefined;
-    priorKeysRef.current = new Set();
+    priorVersionsRef.current = new Map();
     setPendingCount(0);
   }, [sessionId]);
 
   useLayoutEffect(() => {
     const changed = priorFingerprintRef.current !== fingerprint;
     const initial = priorFingerprintRef.current === undefined;
-    const newCount = entries.filter((entry) => !priorKeysRef.current.has(entry.key)).length;
+    const updatedCount = entries.filter((entry) => priorVersionsRef.current.get(entry.key) !== entryVersion(entry)).length;
     priorFingerprintRef.current = fingerprint;
-    priorKeysRef.current = new Set(entries.map((entry) => entry.key));
+    priorVersionsRef.current = new Map(entries.map((entry) => [entry.key, entryVersion(entry)]));
     if (!changed || !entries.length) return;
     const stream = streamRef.current;
     if (live && followingRef.current && stream) stream.scrollTop = stream.scrollHeight;
-    if (live && !initial && !followingRef.current && newCount) setPendingCount((count) => count + newCount);
+    if (live && !initial && !followingRef.current && updatedCount) setPendingCount((count) => count + updatedCount);
   }, [entries, fingerprint, live]);
 
   const jumpToLatest = () => {

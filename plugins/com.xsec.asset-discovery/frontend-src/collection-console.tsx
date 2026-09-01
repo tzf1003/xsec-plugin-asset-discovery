@@ -59,19 +59,34 @@ function logLineKey(line: ExecutionLogPage["lines"][number]) {
   return `${line.timestamp}\u0000${line.direction}\u0000${line.text}`;
 }
 
+function logLineCounts(page: ExecutionLogPage): Map<string, number> {
+  return page.lines.reduce((counts, line) => {
+    const key = logLineKey(line);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+}
+
 function mergeLogLines(current: ExecutionLogPage, next: ExecutionLogPage) {
-  const seen = new Set(current.lines.map(logLineKey));
+  const remaining = logLineCounts(current);
   return [...current.lines, ...next.lines.filter((line) => {
     const key = logLineKey(line);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+    const count = remaining.get(key) ?? 0;
+    if (!count) return true;
+    remaining.set(key, count - 1);
+    return false;
   })];
 }
 
 function hasLogPageGap(current: ExecutionLogPage, next: ExecutionLogPage) {
-  const seen = new Set(current.lines.map(logLineKey));
-  return next.lines.every((line) => !seen.has(logLineKey(line)));
+  const remaining = logLineCounts(current);
+  return next.lines.every((line) => {
+    const key = logLineKey(line);
+    const count = remaining.get(key) ?? 0;
+    if (!count) return true;
+    remaining.set(key, count - 1);
+    return false;
+  });
 }
 
 function longestLegacyRun(current: ExecutionLogPage, next: ExecutionLogPage) {
