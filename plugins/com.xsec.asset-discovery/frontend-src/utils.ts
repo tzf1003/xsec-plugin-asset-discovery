@@ -177,8 +177,15 @@ function scopeLines(prompt: string): string[] {
   return prompt.split(/\r?\n/).map((line) => line.split("#", 1)[0].trim()).filter(Boolean);
 }
 
+function fofaNetworkScope(value: string): boolean {
+  if (!networkScope(value)) return false;
+  if (value.startsWith("*.") || resemblesIpScope(value)) return true;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value) || value.startsWith("//")) return true;
+  return value.includes(".");
+}
+
 export function fofaScopeRequiresTianyan(prompt: string): boolean {
-  return scopeLines(prompt).some((line) => !networkScope(line) && companyScope(line));
+  return scopeLines(prompt).some((line) => companyScope(line) && !fofaNetworkScope(line));
 }
 
 export function validateCollectorScope(provider: CollectorProvider, prompt: string): string | undefined {
