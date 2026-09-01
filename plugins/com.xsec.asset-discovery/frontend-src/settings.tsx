@@ -50,12 +50,12 @@ function useSettingsReader(api: AssetDiscoveryApi) {
     let settingsReady = false;
     setLoading(true);
     setSettingsReady(false);
-    setError(undefined);
     try {
       const next = await api.settings();
       if (generation !== requestGeneration.current) return false;
       setSettings(next);
       setDraft((current) => replaceDraft || !current ? draftFrom(next) : current);
+      setError(undefined);
       settingsReady = true;
     } catch (reason) {
       if (generation === requestGeneration.current) setError(`读取资产发现设置失败：${String(reason)}`);

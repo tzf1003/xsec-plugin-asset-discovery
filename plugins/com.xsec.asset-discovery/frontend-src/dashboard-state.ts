@@ -11,8 +11,11 @@ function useRuns(api: AssetDiscoveryApi) {
   const [runsLoading, setRunsLoading] = useState(true);
   const [runsError, setRunsError] = useState<string>();
   const requestGeneration = useRef(0);
+  const requestInFlight = useRef(false);
   const loadRuns = useCallback(async (): Promise<RunsLoadState> => {
+    if (requestInFlight.current) return "stale";
     const generation = ++requestGeneration.current;
+    requestInFlight.current = true;
     setRunsLoading(true);
     setRunsError(undefined);
     try {
@@ -25,6 +28,7 @@ function useRuns(api: AssetDiscoveryApi) {
       setRunsError(`读取收集任务失败：${String(reason)}`);
       return "error";
     } finally {
+      requestInFlight.current = false;
       if (generation === requestGeneration.current) setRunsLoading(false);
     }
   }, [api]);
