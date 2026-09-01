@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AssetDiscoveryApi } from "./host";
 import type { CollectionStatusFilter, CollectorProvider, CollectorSettings, ExecutionDefaults, PluginHost } from "./types";
-import { approvalModeLabel, collectionMetrics, validateCollectorScope } from "./utils";
+import { approvalModeLabel, collectionMetrics, fofaScopeRequiresTianyan, validateCollectorScope } from "./utils";
 import { AssetPool } from "./asset-pool";
 import { useDashboardState } from "./dashboard-state";
 import { RunsPanel } from "./runs-panel";
@@ -14,16 +14,18 @@ type CollectModalProps = {
   settings?: CollectorSettings;
   settingsError?: string;
   defaults?: ExecutionDefaults;
+  defaultsReady: boolean;
   defaultsError?: string;
   onClose: () => void;
   onOpenSettings: () => Promise<void>;
   onStart: (input: StartInput) => Promise<void>;
 };
 
-function providerConfigured(settings: CollectorSettings, provider: CollectorProvider): boolean {
-  return provider === "fofa"
-    ? settings.fofaApiKeyConfigured && Boolean(settings.fofaApiBaseUrl.trim())
-    : settings.hunterApiKeyConfigured && Boolean(settings.hunterApiBaseUrl.trim());
+function providerConfigured(settings: CollectorSettings, provider: CollectorProvider, prompt: string): boolean {
+  if (provider === "hunter") return settings.hunterApiKeyConfigured && Boolean(settings.hunterApiBaseUrl.trim());
+  return settings.fofaApiKeyConfigured
+    && Boolean(settings.fofaApiBaseUrl.trim())
+    && (!fofaScopeRequiresTianyan(prompt) || settings.tianyanApiKeyConfigured);
 }
 
 function useColorMode(host: PluginHost) {
@@ -89,11 +91,11 @@ export function AssetDiscoveryApp({ api, host }: DashboardProps) {
   const startCollection = useCallback(async (input: StartInput) => {
     const result = await api.start(input);
     const runId = result.collection_run_id || result.run_id || result.process.id;
-    setSelectedRunId(runId);
     setFilter("all");
     setTab("runs");
     setCollectOpen(false);
-    await dashboard.loadRuns(true);
+    const loadState = await dashboard.loadRuns(true);
+    if (loadState === "ok") setSelectedRunId(runId);
     setNotice(`资产收集已启动（任务 ID：${runId}）`);
   }, [api, dashboard.loadRuns]);
 
@@ -103,7 +105,7 @@ export function AssetDiscoveryApp({ api, host }: DashboardProps) {
     <DashboardTabs tab={tab} metrics={metrics} onTab={setTab} />
     {tab === "runs" ? <RunsPanel api={api} runs={dashboard.runs} loading={dashboard.runsLoading} error={dashboard.runsError} selectedRunId={selectedRunId} filter={filter} query={query} onSelect={setSelectedRunId} onFilter={setFilter} onQuery={setQuery} onRefresh={async () => { await dashboard.loadRuns(true); }} onStart={() => setCollectOpen(true)} onOpenAssets={openAssets} onOpenSettings={openSettings} /> : null}
     {tab === "assets" ? <AssetPool api={api} runs={dashboard.runs} selectedRunId={assetRunId} onSelectedRunId={setAssetRunId} /> : null}
-    {collectOpen ? <CollectModal settings={dashboard.settings} settingsError={dashboard.settingsError} defaults={dashboard.defaults} defaultsError={dashboard.defaultsError} onClose={() => setCollectOpen(false)} onOpenSettings={openSettings} onStart={startCollection} /> : null}
+    {collectOpen ? <CollectModal settings={dashboard.settings} settingsError={dashboard.settingsError} defaults={dashboard.defaults} defaultsReady={dashboard.defaultsReady} defaultsError={dashboard.defaultsError} onClose={() => setCollectOpen(false)} onOpenSettings={openSettings} onStart={startCollection} /> : null}
   </main>;
 }
 
@@ -126,7 +128,7 @@ function CollectFields({ provider, prompt, name, workdir, saving, onProvider, on
   </>;
 }
 
-function CollectModal({ settings, settingsError, defaults, defaultsError, onClose, onOpenSettings, onStart }: CollectModalProps) {
+function CollectModal({ settings, settingsError, defaults, defaultsReady, defaultsError, onClose, onOpenSettings, onStart }: CollectModalProps) {
   const [provider, setProvider] = useState<CollectorProvider>(settings?.provider === "fofa" ? "fofa" : "hunter");
   const [providerTouched, setProviderTouched] = useState(false);
   const [prompt, setPrompt] = useState("");
@@ -137,13 +139,13 @@ function CollectModal({ settings, settingsError, defaults, defaultsError, onClos
   useEffect(() => {
     if (!providerTouched && settings) setProvider(settings.provider === "fofa" ? "fofa" : "hunter");
   }, [providerTouched, settings]);
-  const incomplete = !settings || !providerConfigured(settings, provider);
+  const incomplete = !settings || !providerConfigured(settings, provider, prompt);
   const close = () => { if (!saving) onClose(); };
   const start = async () => {
     const scopeError = validateCollectorScope(provider, prompt);
     if (scopeError) return setError(scopeError);
     if (incomplete) return setError("当前数据源配置不完整，请先完成插件设置。");
-    if (!defaults) return setError(defaultsError || "任务默认设置尚未读取成功。");
+    if (!defaultsReady || !defaults) return setError(defaultsError || "任务默认设置尚未读取成功。");
     setSaving(true);
     setError(undefined);
     try {
@@ -154,9 +156,9 @@ function CollectModal({ settings, settingsError, defaults, defaultsError, onClos
       setSaving(false);
     }
   };
-  return <Modal title="启动资产收集" onClose={close} footer={<><Button disabled={saving} onClick={close}>取消</Button><Button className="primary" disabled={saving || incomplete || !defaults} onClick={() => void start()}>启动</Button></>}>
+  return <Modal title="启动资产收集" onClose={close} footer={<><Button disabled={saving} onClick={close}>取消</Button><Button className="primary" disabled={saving || incomplete || !defaultsReady || !defaults} onClick={() => void start()}>启动</Button></>}>
     <CollectFields provider={provider} prompt={prompt} name={name} workdir={workdir} saving={saving} onProvider={(value) => { setProviderTouched(true); setProvider(value); }} onPrompt={setPrompt} onName={setName} onWorkdir={setWorkdir} />
-    <p className="ad-muted">访问模式：{defaults ? `继承批量默认：${approvalModeLabel(defaults.approval_mode)}` : "正在读取任务默认设置…"}</p>
+    <p className="ad-muted">访问模式：{defaultsReady && defaults ? `继承批量默认：${approvalModeLabel(defaults.approval_mode)}` : defaultsError ? "任务默认设置不可用" : "正在读取任务默认设置…"}</p>
     {incomplete ? <Notice action={<Button className="compact" onClick={() => { onClose(); void onOpenSettings(); }}>前往插件设置</Button>}>当前数据源配置不完整，无法启动收集任务。</Notice> : null}
     {settingsError ? <p className="ad-field-error">{settingsError}</p> : null}{defaultsError ? <p className="ad-field-error">{defaultsError}</p> : null}{error ? <p className="ad-field-error">{error}</p> : null}
   </Modal>;

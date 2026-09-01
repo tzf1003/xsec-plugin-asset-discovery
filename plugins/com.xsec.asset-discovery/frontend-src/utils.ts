@@ -173,8 +173,16 @@ function companyScope(value: string): boolean {
     && !/[\p{Cc}]/u.test(value);
 }
 
+function scopeLines(prompt: string): string[] {
+  return prompt.split(/\r?\n/).map((line) => line.split("#", 1)[0].trim()).filter(Boolean);
+}
+
+export function fofaScopeRequiresTianyan(prompt: string): boolean {
+  return scopeLines(prompt).some((line) => !networkScope(line) && companyScope(line));
+}
+
 export function validateCollectorScope(provider: CollectorProvider, prompt: string): string | undefined {
-  const lines = prompt.split(/\r?\n/).map((line) => line.split("#", 1)[0].trim()).filter(Boolean);
+  const lines = scopeLines(prompt);
   const error = provider === "fofa"
     ? "FOFA 的收集范围必须是企业名称、通配符域名或固定主机（请按行输入）"
     : "鹰图 Hunter 的收集范围必须是 HackerOne 链接、handle、通配符域名或固定主机（请按行输入）";
