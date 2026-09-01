@@ -32,10 +32,21 @@ function isNearBottom(node: HTMLElement): boolean {
   return node.scrollHeight - node.clientHeight - node.scrollTop <= BOTTOM_TOLERANCE_PX;
 }
 
+function displayedMessagePart(value: string | undefined): string | undefined {
+  return value?.trim() || undefined;
+}
+
 function entryVersion(entry: StreamEntry): string {
-  return entry.kind === "message"
-    ? `${entry.key}:${entry.message.thought}:${entry.message.text}:${entry.message.completed}`
-    : `${entry.key}:${entry.tool.status}:${printableToolValue(entry.tool.raw_input)}:${printableToolValue(entry.tool.content)}:${printableToolValue(entry.tool.raw_output)}`;
+  if (entry.kind === "message") {
+    return JSON.stringify([displayedMessagePart(entry.message.thought), displayedMessagePart(entry.message.text)]);
+  }
+  const output = entry.tool.content ?? entry.tool.raw_output;
+  return JSON.stringify([
+    toolLabel(entry.tool),
+    entry.tool.status?.trim() || "进行中",
+    entry.tool.raw_input === undefined ? undefined : printableToolValue(entry.tool.raw_input),
+    output === undefined ? undefined : printableToolValue(output),
+  ]);
 }
 
 function entryFingerprint(entries: StreamEntry[]): string {
