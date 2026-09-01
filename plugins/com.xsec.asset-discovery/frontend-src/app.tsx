@@ -93,7 +93,7 @@ export function AssetDiscoveryApp({ api, host }: DashboardProps) {
     setFilter("all");
     setTab("runs");
     setCollectOpen(false);
-    await dashboard.loadRuns();
+    await dashboard.loadRuns(true);
     setNotice(`资产收集已启动（任务 ID：${runId}）`);
   }, [api, dashboard.loadRuns]);
 
@@ -101,7 +101,7 @@ export function AssetDiscoveryApp({ api, host }: DashboardProps) {
     <DashboardHeader onOpenCollect={() => setCollectOpen(true)} onRefresh={() => void dashboard.refresh()} />
     {notice ? <p className="ad-muted">{notice}</p> : null}
     <DashboardTabs tab={tab} metrics={metrics} onTab={setTab} />
-    {tab === "runs" ? <RunsPanel api={api} runs={dashboard.runs} loading={dashboard.runsLoading} error={dashboard.runsError} selectedRunId={selectedRunId} filter={filter} query={query} onSelect={setSelectedRunId} onFilter={setFilter} onQuery={setQuery} onRefresh={async () => { await dashboard.loadRuns(); }} onStart={() => setCollectOpen(true)} onOpenAssets={openAssets} onOpenSettings={openSettings} /> : null}
+    {tab === "runs" ? <RunsPanel api={api} runs={dashboard.runs} loading={dashboard.runsLoading} error={dashboard.runsError} selectedRunId={selectedRunId} filter={filter} query={query} onSelect={setSelectedRunId} onFilter={setFilter} onQuery={setQuery} onRefresh={async () => { await dashboard.loadRuns(true); }} onStart={() => setCollectOpen(true)} onOpenAssets={openAssets} onOpenSettings={openSettings} /> : null}
     {tab === "assets" ? <AssetPool api={api} runs={dashboard.runs} selectedRunId={assetRunId} onSelectedRunId={setAssetRunId} /> : null}
     {collectOpen ? <CollectModal settings={dashboard.settings} settingsError={dashboard.settingsError} defaults={dashboard.defaults} defaultsError={dashboard.defaultsError} onClose={() => setCollectOpen(false)} onOpenSettings={openSettings} onStart={startCollection} /> : null}
   </main>;

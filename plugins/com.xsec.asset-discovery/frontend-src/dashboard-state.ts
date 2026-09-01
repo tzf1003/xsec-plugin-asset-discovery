@@ -11,26 +11,41 @@ function useRuns(api: AssetDiscoveryApi) {
   const [runsLoading, setRunsLoading] = useState(true);
   const [runsError, setRunsError] = useState<string>();
   const requestGeneration = useRef(0);
-  const requestInFlight = useRef(false);
-  const loadRuns = useCallback(async (): Promise<RunsLoadState> => {
-    if (requestInFlight.current) return "stale";
-    const generation = ++requestGeneration.current;
-    requestInFlight.current = true;
-    setRunsLoading(true);
-    setRunsError(undefined);
-    try {
-      const next = await api.runs();
-      if (generation !== requestGeneration.current) return "stale";
-      setRuns(next);
-      return "ok";
-    } catch (reason) {
-      if (generation !== requestGeneration.current) return "stale";
-      setRunsError(`读取收集任务失败：${String(reason)}`);
-      return "error";
-    } finally {
-      requestInFlight.current = false;
-      if (generation === requestGeneration.current) setRunsLoading(false);
-    }
+  const requestInFlight = useRef<Promise<RunsLoadState>>();
+  const queuedRefresh = useRef<Promise<RunsLoadState>>();
+  const loadRuns = useCallback((queueAfterCurrent = false): Promise<RunsLoadState> => {
+    const start = (): Promise<RunsLoadState> => {
+      const generation = ++requestGeneration.current;
+      setRunsLoading(true);
+      setRunsError(undefined);
+      const request = Promise.resolve().then(async () => {
+        try {
+          const next = await api.runs();
+          if (generation !== requestGeneration.current) return "stale";
+          setRuns(next);
+          return "ok";
+        } catch (reason) {
+          if (generation !== requestGeneration.current) return "stale";
+          setRunsError(`读取收集任务失败：${String(reason)}`);
+          return "error";
+        } finally {
+          if (requestInFlight.current === request) requestInFlight.current = undefined;
+          if (generation === requestGeneration.current) setRunsLoading(false);
+        }
+      });
+      requestInFlight.current = request;
+      return request;
+    };
+    const current = requestInFlight.current;
+    if (!current) return start();
+    if (!queueAfterCurrent) return Promise.resolve("stale");
+    if (queuedRefresh.current) return queuedRefresh.current;
+    const queued = current.then(() => {
+      queuedRefresh.current = undefined;
+      return start();
+    });
+    queuedRefresh.current = queued;
+    return queued;
   }, [api]);
   return { runs, runsLoading, runsError, loadRuns };
 }
@@ -75,7 +90,7 @@ export function useDashboardState(api: AssetDiscoveryApi) {
   const runs = useRuns(api);
   const setup = useCollectorSetup(api);
   const refresh = useCallback(async () => {
-    await Promise.all([runs.loadRuns(), setup.loadDefaults(), setup.loadSettings()]);
+    await Promise.all([runs.loadRuns(true), setup.loadDefaults(), setup.loadSettings()]);
   }, [runs.loadRuns, setup.loadDefaults, setup.loadSettings]);
   useEffect(() => { void refresh(); }, [refresh]);
   useActiveRunRefresh(runs.runs, runs.loadRuns);
