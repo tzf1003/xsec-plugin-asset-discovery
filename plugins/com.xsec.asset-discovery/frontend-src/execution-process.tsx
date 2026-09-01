@@ -106,8 +106,11 @@ function useFollowLatest(entries: StreamEntry[], fingerprint: string, sessionId:
       .map((entry) => entry.key);
     priorFingerprintRef.current = fingerprint;
     priorVersionsRef.current = new Map(entries.map((entry) => [entry.key, entryVersion(entry)]));
-    if (!changed) return;
     const pruned = prunePendingKeys(pendingKeysRef.current, entries);
+    if (!changed) {
+      if (pruned) setPendingCount(pendingKeysRef.current.size);
+      return;
+    }
     if (!entries.length) {
       if (pruned) setPendingCount(0);
       return;
