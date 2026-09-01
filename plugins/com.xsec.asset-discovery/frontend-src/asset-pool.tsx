@@ -47,10 +47,12 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
   const [importOpen, setImportOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>();
   const [projectsError, setProjectsError] = useState<string>();
+  const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [mutating, setMutating] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const latestFilters = useRef(filters);
+  const projectsRequest = useRef(0);
   latestFilters.current = filters;
 
   const load = useCallback(async () => {
@@ -77,8 +79,21 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
 
   const update = (next: Partial<AssetFilters>) => setFilters((current) => ({ ...current, ...next, page: next.page ?? 1 }));
   const openImport = async () => {
-    setImportOpen(true); setProjectsError(undefined);
-    try { setProjects(await api.projects()); } catch (reason) { setProjectsError(`读取项目列表失败：${String(reason)}`); }
+    const generation = ++projectsRequest.current;
+    setImportOpen(true);
+    setProjectsError(undefined);
+    setProjectId("");
+    setProjects(undefined);
+    setProjectsLoading(true);
+    try {
+      const next = await api.projects();
+      if (generation !== projectsRequest.current) return;
+      setProjects(next);
+    } catch (reason) {
+      if (generation === projectsRequest.current) setProjectsError(`读取项目列表失败：${String(reason)}`);
+    } finally {
+      if (generation === projectsRequest.current) setProjectsLoading(false);
+    }
   };
   const confirmImport = async () => {
     if (!projectId) { setProjectsError("请选择目标项目。"); return; }
@@ -108,7 +123,7 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
     {error ? <ErrorState error={error} onRetry={() => void load()} /> : null}
     {!error && !loading && !page?.items.length ? <EmptyState>资产池为空</EmptyState> : null}
     {page?.items.length ? <AssetTable page={page} filters={filters} selected={selected} mutating={mutating} onSelected={setSelected} onUpdate={update} /> : null}
-    {importOpen ? <ImportModal projects={projects} error={projectsError} projectId={projectId} count={selected.length} saving={mutating} onProject={setProjectId} onClose={() => setImportOpen(false)} onConfirm={() => void confirmImport()} /> : null}
+    {importOpen ? <ImportModal projects={projects} error={projectsError} projectId={projectId} count={selected.length} saving={mutating} loading={projectsLoading} onProject={setProjectId} onClose={() => setImportOpen(false)} onConfirm={() => void confirmImport()} /> : null}
     {deleteOpen ? <ConfirmModal title="删除发现资产" detail={`确认删除选中的 ${selected.length} 条资产？此操作不可恢复。`} confirmLabel="删除" danger busy={mutating} onClose={() => setDeleteOpen(false)} onConfirm={() => void remove()} /> : null}
   </section>;
 }
@@ -139,9 +154,10 @@ function AssetTable({ page, filters, selected, mutating, onSelected, onUpdate }:
   </>;
 }
 
-function ImportModal({ projects, error, projectId, count, saving, onProject, onClose, onConfirm }: {
-  projects?: Project[]; error?: string; projectId: string; count: number; saving: boolean; onProject: (value: string) => void; onClose: () => void; onConfirm: () => void;
+function ImportModal({ projects, error, projectId, count, saving, loading, onProject, onClose, onConfirm }: {
+  projects?: Project[]; error?: string; projectId: string; count: number; saving: boolean; loading: boolean; onProject: (value: string) => void; onClose: () => void; onConfirm: () => void;
 }) {
   const close = () => { if (!saving) onClose(); };
-  return <Modal title="导入到项目" onClose={close} footer={<><Button disabled={saving} onClick={close}>取消</Button><Button className="primary" disabled={saving || !projectId} onClick={onConfirm}>导入</Button></>}><p className="ad-description">将把选中的 {count} 条资产导入到目标项目；已存在的资产会自动跳过。</p><label className="ad-field">目标项目<select className="ad-select" value={projectId} disabled={saving} onChange={(event) => onProject(event.target.value)}><option value="">选择目标项目</option>{projects?.map((project) => <option key={project.id} value={project.id}>{project.name}（{project.code}）</option>)}</select></label>{error ? <p className="ad-field-error">{error}</p> : null}{projects && !projects.length ? <p className="ad-muted">暂无可导入项目。</p> : null}</Modal>;
+  const confirmDisabled = saving || loading || !projectId;
+  return <Modal title="导入到项目" onClose={close} footer={<><Button disabled={saving} onClick={close}>取消</Button><Button className="primary" disabled={confirmDisabled} onClick={onConfirm}>导入</Button></>}><p className="ad-description">将把选中的 {count} 条资产导入到目标项目；已存在的资产会自动跳过。</p><label className="ad-field">目标项目<select className="ad-select" value={projectId} disabled={saving || loading} onChange={(event) => onProject(event.target.value)}><option value="">选择目标项目</option>{projects?.map((project) => <option key={project.id} value={project.id}>{project.name}（{project.code}）</option>)}</select></label>{loading ? <p className="ad-muted">正在读取项目列表…</p> : null}{error ? <p className="ad-field-error">{error}</p> : null}{projects && !projects.length ? <p className="ad-muted">暂无可导入项目。</p> : null}</Modal>;
 }

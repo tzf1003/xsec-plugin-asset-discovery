@@ -188,6 +188,10 @@ export function fofaScopeRequiresTianyan(prompt: string): boolean {
   return scopeLines(prompt).some((line) => companyScope(line) && !fofaNetworkScope(line));
 }
 
+export function normalizedCollectorScope(prompt: string): string {
+  return scopeLines(prompt).join("\n");
+}
+
 export function validateCollectorScope(provider: CollectorProvider, prompt: string): string | undefined {
   const lines = scopeLines(prompt);
   const error = provider === "fofa"

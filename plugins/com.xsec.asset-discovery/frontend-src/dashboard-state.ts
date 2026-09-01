@@ -47,7 +47,11 @@ function useRuns(api: AssetDiscoveryApi) {
     queuedRefresh.current = queued;
     return queued;
   }, [api]);
-  return { runs, runsLoading, runsError, loadRuns };
+  const dropRun = useCallback((runId: string) => {
+    requestGeneration.current += 1;
+    setRuns((current) => current.filter((run) => run.id !== runId));
+  }, []);
+  return { runs, runsLoading, runsError, loadRuns, dropRun };
 }
 
 function useCollectorSetup(api: AssetDiscoveryApi) {
@@ -56,7 +60,9 @@ function useCollectorSetup(api: AssetDiscoveryApi) {
   const [defaultsError, setDefaultsError] = useState<string>();
   const defaultsGeneration = useRef(0);
   const [settings, setSettings] = useState<CollectorSettings>();
+  const [settingsReady, setSettingsReady] = useState(false);
   const [settingsError, setSettingsError] = useState<string>();
+  const settingsGeneration = useRef(0);
   const loadDefaults = useCallback(async () => {
     const generation = ++defaultsGeneration.current;
     setDefaultsReady(false);
@@ -71,14 +77,19 @@ function useCollectorSetup(api: AssetDiscoveryApi) {
     }
   }, [api]);
   const loadSettings = useCallback(async () => {
+    const generation = ++settingsGeneration.current;
+    setSettingsReady(false);
     setSettingsError(undefined);
     try {
-      setSettings(await api.settings());
+      const next = await api.settings();
+      if (generation !== settingsGeneration.current) return;
+      setSettings(next);
+      setSettingsReady(true);
     } catch (reason) {
-      setSettingsError(`读取资产发现设置失败：${String(reason)}`);
+      if (generation === settingsGeneration.current) setSettingsError(`读取资产发现设置失败：${String(reason)}`);
     }
   }, [api]);
-  return { defaults, defaultsReady, defaultsError, settings, settingsError, loadDefaults, loadSettings };
+  return { defaults, defaultsReady, defaultsError, settings, settingsReady, settingsError, loadDefaults, loadSettings };
 }
 
 function useActiveRunRefresh(runs: CollectionRun[], loadRuns: () => Promise<RunsLoadState>) {

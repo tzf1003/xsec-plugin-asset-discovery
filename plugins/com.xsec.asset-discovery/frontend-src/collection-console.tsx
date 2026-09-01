@@ -20,20 +20,21 @@ type ConsoleProps = {
   api: AssetDiscoveryApi;
   run?: CollectionRun;
   onChanged: () => Promise<void>;
-  onDeleted: () => void;
+  onDeleted: (runId: string) => void;
   onOpenAssets: (runId: string) => void;
   onOpenSettings: () => Promise<void>;
 };
 
 function flow(run: CollectionRun) {
   const bucket = collectionBucket(run.status);
+  const starting = run.status.trim().toLowerCase() === "starting";
   const terminal = bucket === "completed" || bucket === "failed" || bucket === "cancelled";
   const completed = bucket === "completed";
   const failed = bucket === "failed" || bucket === "cancelled";
   const startupFailed = run.failure_code === "startup_timeout";
   return [
-    { title: "启动收集 Agent", state: startupFailed ? "failed" : "done", text: startupFailed ? "启动超时" : formatTime(run.created_at) },
-    { title: `查询 ${providerLabel(run.provider)}`, state: startupFailed ? "skipped" : bucket === "running" && !run.total ? "active" : completed || run.total ? "done" : failed ? "failed" : "pending", text: "按授权范围检索资产" },
+    { title: "启动收集 Agent", state: startupFailed ? "failed" : starting ? "active" : "done", text: startupFailed ? "启动超时" : starting ? "正在启动" : formatTime(run.created_at) },
+    { title: `查询 ${providerLabel(run.provider)}`, state: startupFailed ? "skipped" : starting ? "pending" : bucket === "running" && !run.total ? "active" : completed || run.total ? "done" : failed ? "failed" : "pending", text: "按授权范围检索资产" },
     { title: "结果入库", state: startupFailed ? "skipped" : completed || run.total ? "done" : bucket === "running" ? "pending" : failed ? "skipped" : "pending", text: `${run.total} 条资产` },
     { title: bucket === "cancelled" ? "收集已停止" : bucket === "failed" ? "收集失败" : "收集完成", state: terminal ? (failed ? "failed" : "done") : "pending", text: terminal ? formatTime(run.finished_at) : "等待任务结束" },
   ];
@@ -60,11 +61,28 @@ function logLineKey(line: ExecutionLogPage["lines"][number]) {
 }
 
 function mergeLogLines(current: ExecutionLogPage, next: ExecutionLogPage) {
-  const seen = new Set(current.lines.map(logLineKey));
-  return [...current.lines, ...next.lines.filter((line) => {
+  const seenIdentities = new Set<string>();
+  const anonymousHave = new Map<string, number>();
+  for (const line of current.lines) {
+    if (line.identity) {
+      seenIdentities.add(line.identity);
+      continue;
+    }
     const key = logLineKey(line);
-    if (seen.has(key)) return false;
-    seen.add(key);
+    anonymousHave.set(key, (anonymousHave.get(key) ?? 0) + 1);
+  }
+  const anonymousSeen = new Map<string, number>();
+  return [...current.lines, ...next.lines.filter((line) => {
+    if (line.identity) {
+      if (seenIdentities.has(line.identity)) return false;
+      seenIdentities.add(line.identity);
+      return true;
+    }
+    const key = logLineKey(line);
+    const seen = (anonymousSeen.get(key) ?? 0) + 1;
+    anonymousSeen.set(key, seen);
+    if (seen <= (anonymousHave.get(key) ?? 0)) return false;
+    anonymousHave.set(key, seen);
     return true;
   })];
 }
@@ -227,7 +245,7 @@ export function CollectionConsole({ api, run, onChanged, onDeleted, onOpenAssets
   const content = useConsoleContent(api, runId, running);
   if (!run) return <section className="ad-console"><EmptyState>选择左侧收集任务，查看范围、日志与任务详情</EmptyState></section>;
   const stop = async () => { setMutating(true); try { await api.stop(run.id); await onChanged(); } catch (reason) { content.setLogsError(`停止收集失败：${String(reason)}`); } finally { setMutating(false); } };
-  const remove = async () => { setMutating(true); try { await api.deleteRun(run.id); setDeleteOpen(false); onDeleted(); await onChanged(); } catch (reason) { content.setLogsError(`删除收集任务失败：${String(reason)}`); } finally { setMutating(false); } };
+  const remove = async () => { setMutating(true); try { await api.deleteRun(run.id); setDeleteOpen(false); onDeleted(run.id); await onChanged(); } catch (reason) { content.setLogsError(`删除收集任务失败：${String(reason)}`); } finally { setMutating(false); } };
   const failure = collectionResultDescription(run);
 
   return <section className="ad-console"><ConsoleHeader run={run} mutating={mutating} onStop={() => void stop()} onOpenAssets={() => onOpenAssets(run.id)} onRefresh={() => void content.refreshDetails()} onDelete={() => setDeleteOpen(true)} /><div className="ad-console-body">

@@ -82,13 +82,14 @@ function useSettingsSave({ api, draft, settingsReady, setSettings, setDraft, set
   setSettings: (value: CollectorSettings) => void;
   setDraft: (value: SettingsDraft) => void;
   setError: (value: string | undefined) => void;
-  setNotice: (value: string) => void;
+  setNotice: (value: string | undefined) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const save = async () => {
     if (!settingsReady || !draft) return;
     setSaving(true);
     setError(undefined);
+    setNotice(undefined);
     try {
       const next = await api.saveSettings(normalizedDraft(draft));
       setSettings(next);
@@ -108,7 +109,7 @@ function useCredentials({ api, refresh, settingsReady, setError, setNotice }: {
   refresh: () => Promise<void>;
   settingsReady: boolean;
   setError: (value: string | undefined) => void;
-  setNotice: (value: string) => void;
+  setNotice: (value: string | undefined) => void;
 }) {
   const [credentials, setCredentials] = useState<Credentials>({ hunter: "", fofa: "", tianyan: "" });
   const [saving, setSaving] = useState(false);
@@ -120,6 +121,7 @@ function useCredentials({ api, refresh, settingsReady, setError, setNotice }: {
     if (!value) return setError("请输入要保存的密钥。");
     setSaving(true);
     setError(undefined);
+    setNotice(undefined);
     try {
       await api.saveCredential(kind, value);
       setCredentials((current) => ({ ...current, [kind]: "" }));
@@ -135,6 +137,7 @@ function useCredentials({ api, refresh, settingsReady, setError, setNotice }: {
     if (!settingsReady || !clearKind) return;
     setSaving(true);
     setError(undefined);
+    setNotice(undefined);
     try {
       await api.clearCredential(clearKind);
       setClearKind(undefined);
