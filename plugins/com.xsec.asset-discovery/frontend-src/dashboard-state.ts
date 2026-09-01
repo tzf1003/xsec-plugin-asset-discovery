@@ -48,6 +48,7 @@ function useRuns(api: AssetDiscoveryApi) {
     return queued;
   }, [api]);
   const removeRun = useCallback((runId: string) => {
+    requestGeneration.current += 1;
     setRuns((current) => current.filter((run) => run.id !== runId));
   }, []);
   return { runs, runsLoading, runsError, loadRuns, removeRun };

@@ -174,7 +174,7 @@ function companyScope(value: string): boolean {
 }
 
 function scopeLines(prompt: string): string[] {
-  return prompt.split(/\r?\n/).map((line) => line.split("#", 1)[0].trim()).filter(Boolean);
+  return prompt.split(/\r?\n/).map((line) => line.split(/\s+#/, 1)[0].trim()).filter(Boolean);
 }
 
 export function normalizeCollectorScope(prompt: string): string {
