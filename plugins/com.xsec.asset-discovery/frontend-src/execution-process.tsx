@@ -41,7 +41,8 @@ function entryFingerprint(entries: StreamEntry[]): string {
 
 function ToolDisclosure({ tool }: { tool: ToolCall }) {
   const output = tool.content ?? tool.raw_output;
-  return <details className="ad-tool"><summary>{toolLabel(tool)} · {tool.status || "已完成"}</summary>
+  const status = tool.status?.trim() || "进行中";
+  return <details className="ad-tool"><summary>{toolLabel(tool)} · {status}</summary>
     {tool.raw_input !== undefined ? <ToolValue label="输入" value={tool.raw_input} /> : null}
     {output !== undefined ? <ToolValue label="结果" value={output} /> : null}
   </details>;
