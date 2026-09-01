@@ -173,8 +173,14 @@ function companyScope(value: string): boolean {
     && !/[\p{Cc}]/u.test(value);
 }
 
+function stripScopeComment(line: string): string {
+  const trimmed = line.trim();
+  if (trimmed.startsWith("#")) return "";
+  return line.split(/\s+#/, 1)[0].trim();
+}
+
 function scopeLines(prompt: string): string[] {
-  return prompt.split(/\r?\n/).map((line) => line.split(/\s+#/, 1)[0].trim()).filter(Boolean);
+  return prompt.split(/\r?\n/).map(stripScopeComment).filter(Boolean);
 }
 
 export function normalizeCollectorScope(prompt: string): string {
