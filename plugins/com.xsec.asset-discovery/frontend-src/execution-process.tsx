@@ -67,30 +67,38 @@ function useFollowLatest(entries: StreamEntry[], fingerprint: string, sessionId:
   const followingRef = useRef(true);
   const priorFingerprintRef = useRef<string>();
   const priorVersionsRef = useRef<Map<string, string>>(new Map());
+  const pendingKeysRef = useRef(new Set<string>());
   const [pendingCount, setPendingCount] = useState(0);
 
   useLayoutEffect(() => {
     followingRef.current = true;
     priorFingerprintRef.current = undefined;
     priorVersionsRef.current = new Map();
+    pendingKeysRef.current = new Set();
     setPendingCount(0);
   }, [sessionId]);
 
   useLayoutEffect(() => {
     const changed = priorFingerprintRef.current !== fingerprint;
     const initial = priorFingerprintRef.current === undefined;
-    const updatedCount = entries.filter((entry) => priorVersionsRef.current.get(entry.key) !== entryVersion(entry)).length;
+    const updatedKeys = entries
+      .filter((entry) => priorVersionsRef.current.get(entry.key) !== entryVersion(entry))
+      .map((entry) => entry.key);
     priorFingerprintRef.current = fingerprint;
     priorVersionsRef.current = new Map(entries.map((entry) => [entry.key, entryVersion(entry)]));
     if (!changed || !entries.length) return;
     const stream = streamRef.current;
     if (live && followingRef.current && stream) stream.scrollTop = stream.scrollHeight;
-    if (live && !initial && !followingRef.current && updatedCount) setPendingCount((count) => count + updatedCount);
+    if (live && !initial && !followingRef.current && updatedKeys.length) {
+      updatedKeys.forEach((key) => pendingKeysRef.current.add(key));
+      setPendingCount(pendingKeysRef.current.size);
+    }
   }, [entries, fingerprint, live]);
 
   const jumpToLatest = () => {
     if (streamRef.current) streamRef.current.scrollTop = streamRef.current.scrollHeight;
     followingRef.current = true;
+    pendingKeysRef.current = new Set();
     setPendingCount(0);
   };
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
