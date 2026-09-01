@@ -52,15 +52,22 @@ function useRuns(api: AssetDiscoveryApi) {
 
 function useCollectorSetup(api: AssetDiscoveryApi) {
   const [defaults, setDefaults] = useState<ExecutionDefaults>();
+  const [defaultsReady, setDefaultsReady] = useState(false);
   const [defaultsError, setDefaultsError] = useState<string>();
+  const defaultsGeneration = useRef(0);
   const [settings, setSettings] = useState<CollectorSettings>();
   const [settingsError, setSettingsError] = useState<string>();
   const loadDefaults = useCallback(async () => {
+    const generation = ++defaultsGeneration.current;
+    setDefaultsReady(false);
     setDefaultsError(undefined);
     try {
-      setDefaults(await api.defaults());
+      const next = await api.defaults();
+      if (generation !== defaultsGeneration.current) return;
+      setDefaults(next);
+      setDefaultsReady(true);
     } catch (reason) {
-      setDefaultsError(`读取任务默认设置失败：${String(reason)}`);
+      if (generation === defaultsGeneration.current) setDefaultsError(`读取任务默认设置失败：${String(reason)}`);
     }
   }, [api]);
   const loadSettings = useCallback(async () => {
@@ -71,7 +78,7 @@ function useCollectorSetup(api: AssetDiscoveryApi) {
       setSettingsError(`读取资产发现设置失败：${String(reason)}`);
     }
   }, [api]);
-  return { defaults, defaultsError, settings, settingsError, loadDefaults, loadSettings };
+  return { defaults, defaultsReady, defaultsError, settings, settingsError, loadDefaults, loadSettings };
 }
 
 function useActiveRunRefresh(runs: CollectionRun[], loadRuns: () => Promise<RunsLoadState>) {
