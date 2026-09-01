@@ -47,7 +47,11 @@ function useRuns(api: AssetDiscoveryApi) {
     queuedRefresh.current = queued;
     return queued;
   }, [api]);
-  return { runs, runsLoading, runsError, loadRuns };
+  const removeRun = useCallback((runId: string) => {
+    requestGeneration.current += 1;
+    setRuns((current) => current.filter((run) => run.id !== runId));
+  }, []);
+  return { runs, runsLoading, runsError, loadRuns, removeRun };
 }
 
 function useCollectorSetup(api: AssetDiscoveryApi) {
