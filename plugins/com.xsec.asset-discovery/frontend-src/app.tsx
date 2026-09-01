@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AssetDiscoveryApi } from "./host";
 import type { CollectionStatusFilter, CollectorProvider, CollectorSettings, ExecutionDefaults, PluginHost } from "./types";
-import { approvalModeLabel, collectionMetrics, fofaScopeRequiresTianyan, validateCollectorScope } from "./utils";
+import { approvalModeLabel, collectionMetrics, fofaScopeRequiresTianyan, normalizeCollectorScope, validateCollectorScope } from "./utils";
 import { AssetPool } from "./asset-pool";
 import { useDashboardState } from "./dashboard-state";
 import { RunsPanel } from "./runs-panel";
@@ -104,7 +104,7 @@ export function AssetDiscoveryApp({ api, host }: DashboardProps) {
     <DashboardHeader onOpenCollect={() => setCollectOpen(true)} onRefresh={() => void dashboard.refresh()} />
     {notice ? <p className="ad-muted">{notice}</p> : null}
     <DashboardTabs tab={tab} metrics={metrics} onTab={setTab} />
-    {tab === "runs" ? <RunsPanel api={api} runs={dashboard.runs} loading={dashboard.runsLoading} error={dashboard.runsError} selectedRunId={selectedRunId} filter={filter} query={query} onSelect={setSelectedRunId} onFilter={setFilter} onQuery={setQuery} onRefresh={async () => { await dashboard.loadRuns(true); }} onStart={() => setCollectOpen(true)} onOpenAssets={openAssets} onOpenSettings={openSettings} /> : null}
+    {tab === "runs" ? <RunsPanel api={api} runs={dashboard.runs} loading={dashboard.runsLoading} error={dashboard.runsError} selectedRunId={selectedRunId} filter={filter} query={query} onSelect={setSelectedRunId} onDeleted={(runId) => { dashboard.removeRun(runId); setSelectedRunId(undefined); }} onFilter={setFilter} onQuery={setQuery} onRefresh={async () => { await dashboard.loadRuns(true); }} onStart={() => setCollectOpen(true)} onOpenAssets={openAssets} onOpenSettings={openSettings} /> : null}
     {tab === "assets" ? <AssetPool api={api} runs={dashboard.runs} selectedRunId={assetRunId} onSelectedRunId={setAssetRunId} /> : null}
     {collectOpen ? <CollectModal settings={dashboard.settings} settingsReady={dashboard.settingsReady} settingsError={dashboard.settingsError} defaults={dashboard.defaults} defaultsReady={dashboard.defaultsReady} defaultsError={dashboard.defaultsError} onClose={() => setCollectOpen(false)} onOpenSettings={openSettings} onStart={startCollection} /> : null}
   </main>;
@@ -144,7 +144,8 @@ function CollectModal({ settings, settingsReady, settingsError, defaults, defaul
   const configurationIncomplete = !settings || !providerConfigured(settings, provider, prompt);
   const close = () => { if (!saving) onClose(); };
   const start = async () => {
-    const scopeError = validateCollectorScope(provider, prompt);
+    const normalizedPrompt = normalizeCollectorScope(prompt);
+    const scopeError = validateCollectorScope(provider, normalizedPrompt);
     if (scopeError) return setError(scopeError);
     if (settingsUnavailable) return setError(settingsError || "资产发现设置尚未读取成功。");
     if (configurationIncomplete) return setError("当前数据源配置不完整，请先完成插件设置。");
@@ -152,7 +153,7 @@ function CollectModal({ settings, settingsReady, settingsError, defaults, defaul
     setSaving(true);
     setError(undefined);
     try {
-      await onStart({ prompt, name: name.trim() || undefined, provider, workdir: workdir.trim() || undefined });
+      await onStart({ prompt: normalizedPrompt, name: name.trim() || undefined, provider, workdir: workdir.trim() || undefined });
     } catch (reason) {
       setError(`启动资产收集失败：${String(reason)}`);
     } finally {

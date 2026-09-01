@@ -177,6 +177,10 @@ function scopeLines(prompt: string): string[] {
   return prompt.split(/\r?\n/).map((line) => line.split("#", 1)[0].trim()).filter(Boolean);
 }
 
+export function normalizeCollectorScope(prompt: string): string {
+  return scopeLines(prompt).join("\n");
+}
+
 function fofaNetworkScope(value: string): boolean {
   if (!networkScope(value)) return false;
   if (value.startsWith("*.") || resemblesIpScope(value)) return true;
