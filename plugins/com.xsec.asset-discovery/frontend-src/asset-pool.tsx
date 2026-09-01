@@ -73,6 +73,8 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
       if (latestFilters.current === filters) setLoading(false);
     }
   }, [api, filters]);
+  const latestLoad = useRef(load);
+  latestLoad.current = load;
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (selectedRunId !== filters.runId) setFilters((current) => ({ ...current, runId: selectedRunId, page: 1 })); }, [filters.runId, selectedRunId]);
@@ -91,7 +93,7 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
   const confirmImport = async () => {
     if (!projectId) { setProjectsError("请选择目标项目。"); return; }
     setMutating(true);
-    try { const result = await api.importAssets(selected, projectId); setImportOpen(false); setProjectId(""); await load(); setNotice(`导入完成：新增 ${result.created}，跳过 ${result.skipped}，失败 ${result.failed}`); } catch (reason) { setProjectsError(`导入失败：${String(reason)}`); } finally { setMutating(false); }
+    try { const result = await api.importAssets(selected, projectId); setImportOpen(false); setProjectId(""); await latestLoad.current(); setNotice(`导入完成：新增 ${result.created}，跳过 ${result.skipped}，失败 ${result.failed}`); } catch (reason) { setProjectsError(`导入失败：${String(reason)}`); } finally { setMutating(false); }
   };
   const remove = async () => {
     const selectedCount = selected.length;
@@ -100,7 +102,7 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
     try {
       const result = await api.deleteAssets(selected);
       setDeleteOpen(false);
-      await load();
+      await latestLoad.current();
       console.info("asset-discovery.assets.delete.completed", { selectedCount, deleted: result.deleted });
       setNotice(`已删除 ${result.deleted} 条资产。`);
     } catch (reason) {
