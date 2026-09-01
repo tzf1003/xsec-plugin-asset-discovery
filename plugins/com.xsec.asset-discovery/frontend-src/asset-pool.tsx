@@ -55,7 +55,7 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
   latestFilters.current = filters;
 
   const load = useCallback(async () => {
-    setLoading(true); setError(undefined); setPage(undefined);
+    setLoading(true); setError(undefined); setPage(undefined); setSelected([]);
     try {
       const next = await api.assets(filters);
       if (latestFilters.current !== filters) return;

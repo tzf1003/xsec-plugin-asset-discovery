@@ -12,6 +12,7 @@ type StreamEntry =
 
 type ProcessProps = {
   execution?: ExecutionSnapshot;
+  loading: boolean;
   error?: string;
   live: boolean;
   onRefresh: () => void;
@@ -50,7 +51,7 @@ function entryVersion(entry: StreamEntry): string {
 }
 
 function entryFingerprint(entries: StreamEntry[]): string {
-  return entries.map(entryVersion).join(ENTRY_FINGERPRINT_SEPARATOR);
+  return entries.map((entry) => `${entry.key}\u0000${entryVersion(entry)}`).join(ENTRY_FINGERPRINT_SEPARATOR);
 }
 
 function prunePendingKeys(pendingKeys: Set<string>, entries: StreamEntry[]): boolean {
@@ -154,14 +155,15 @@ function ProcessStream({ entries, live, process }: {
   </>;
 }
 
-export function ExecutionProcess({ execution, error, live, onRefresh }: ProcessProps) {
+export function ExecutionProcess({ execution, loading, error, live, onRefresh }: ProcessProps) {
   const entries = useMemo(() => entriesFor(execution), [execution]);
   const fingerprint = useMemo(() => entryFingerprint(entries), [entries]);
   const sessionId = execution?.session?.session_id ?? execution?.run.session_id ?? undefined;
   const process = useFollowLatest(entries, fingerprint, sessionId, live);
 
   if (error) return <ErrorState error={error} onRetry={onRefresh} />;
-  if (!sessionId) return <EmptyState>{live ? "正在创建执行会话…" : "该任务未生成可用的执行会话。"}</EmptyState>;
+  if (loading && !execution) return <EmptyState>正在读取执行记录…</EmptyState>;
+  if (!execution?.session) return <EmptyState>{live ? "正在创建执行会话…" : "该任务未生成可用的执行会话。"}</EmptyState>;
   if (!entries.length) return <EmptyState>{live ? "会话已连接，等待执行过程…" : "暂无可用执行记录"}</EmptyState>;
   return <div className="ad-process-wrap">
     {execution?.truncated ? <Notice>执行记录已按隔离通道大小截断；刷新或读取日志可查看后续内容。</Notice> : null}
