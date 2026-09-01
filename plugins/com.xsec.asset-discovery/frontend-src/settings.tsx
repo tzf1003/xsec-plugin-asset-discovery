@@ -50,12 +50,12 @@ function useSettingsReader(api: AssetDiscoveryApi) {
     let settingsReady = false;
     setLoading(true);
     setSettingsReady(false);
-    setError(undefined);
     try {
       const next = await api.settings();
       if (generation !== requestGeneration.current) return false;
       setSettings(next);
       setDraft((current) => replaceDraft || !current ? draftFrom(next) : current);
+      setError(undefined);
       settingsReady = true;
     } catch (reason) {
       if (generation === requestGeneration.current) setError(`读取资产发现设置失败：${String(reason)}`);
@@ -149,21 +149,21 @@ function useCredentials({ api, refresh, settingsReady, setError, setNotice }: {
   return { credentials, saving, clearKind, setCredential, save, clear, setClearKind };
 }
 
-function SettingsFields({ draft, saving, onUpdate }: {
+function SettingsFields({ draft, disabled, onUpdate }: {
   draft: SettingsDraft;
-  saving: boolean;
+  disabled: boolean;
   onUpdate: <K extends keyof SettingsDraft>(key: K, value: SettingsDraft[K]) => void;
 }) {
   return <>
     <label className="ad-field">默认收集数据源
-      <select className="ad-select" value={draft.provider} disabled={saving} onChange={(event) => onUpdate("provider", event.target.value as CollectorProvider)}>
+      <select className="ad-select" value={draft.provider} disabled={disabled} onChange={(event) => onUpdate("provider", event.target.value as CollectorProvider)}>
         <option value="hunter">鹰图 Hunter</option><option value="fofa">FOFA + 天眼查</option>
       </select>
     </label>
-    <label className="ad-field">鹰图 API Host<input className="ad-input" value={draft.hunterApiBaseUrl} disabled={saving} onChange={(event) => onUpdate("hunterApiBaseUrl", event.target.value)} /></label>
-    <label className="ad-field">FOFA API Host<input className="ad-input" value={draft.fofaApiBaseUrl} disabled={saving} onChange={(event) => onUpdate("fofaApiBaseUrl", event.target.value)} /></label>
-    <label className="ad-field">鹰图 Skill 路径（可选）<input className="ad-input" value={draft.hunterSkillPath} disabled={saving} onChange={(event) => onUpdate("hunterSkillPath", event.target.value)} /></label>
-    <label className="ad-field">FOFA Skill 路径（可选）<input className="ad-input" value={draft.fofaSkillPath} disabled={saving} onChange={(event) => onUpdate("fofaSkillPath", event.target.value)} /></label>
+    <label className="ad-field">鹰图 API Host<input className="ad-input" value={draft.hunterApiBaseUrl} disabled={disabled} onChange={(event) => onUpdate("hunterApiBaseUrl", event.target.value)} /></label>
+    <label className="ad-field">FOFA API Host<input className="ad-input" value={draft.fofaApiBaseUrl} disabled={disabled} onChange={(event) => onUpdate("fofaApiBaseUrl", event.target.value)} /></label>
+    <label className="ad-field">鹰图 Skill 路径（可选）<input className="ad-input" value={draft.hunterSkillPath} disabled={disabled} onChange={(event) => onUpdate("hunterSkillPath", event.target.value)} /></label>
+    <label className="ad-field">FOFA Skill 路径（可选）<input className="ad-input" value={draft.fofaSkillPath} disabled={disabled} onChange={(event) => onUpdate("fofaSkillPath", event.target.value)} /></label>
   </>;
 }
 
@@ -211,7 +211,7 @@ export function SettingsPage({ api }: { api: AssetDiscoveryApi }) {
   const settingsSave = useSettingsSave({ api, draft: reader.draft, settingsReady: reader.isSettingsReady, setSettings: reader.setSettings, setDraft: reader.setDraft, setError: reader.setError, setNotice: reader.setNotice });
   const credentials = useCredentials({ api, refresh: async () => { await reader.load(false); }, settingsReady: reader.isSettingsReady, setError: reader.setError, setNotice: reader.setNotice });
   const saving = settingsSave.saving || credentials.saving;
-  const credentialDisabled = saving || !reader.isSettingsReady;
+  const settingsDisabled = saving || !reader.isSettingsReady;
   if (reader.loading && !reader.settings) return <div className="ad-app ad-settings"><p className="ad-muted">正在读取资产发现设置…</p></div>;
   if (reader.error && !reader.settings) return <div className="ad-app ad-settings"><div className="ad-error"><p>{reader.error}</p><button ref={retryButtonRef} className="ad-button compact" type="button" disabled={reader.loading}>重新读取</button></div></div>;
   if (!reader.settings || !reader.draft) throw new Error("资产发现设置状态不完整");
@@ -219,8 +219,8 @@ export function SettingsPage({ api }: { api: AssetDiscoveryApi }) {
     <p className="ad-eyebrow">ASSET DISCOVERY SETTINGS</p><h1 className="ad-title">资产发现</h1>
     <p className="ad-description">配置默认数据源、API Host 和 Skill 路径。密钥仅由宿主系统密钥库存储。</p>
     <div className="ad-runs">
-      <SettingsFields draft={reader.draft} saving={saving} onUpdate={reader.update} />
-      <CredentialFields settings={reader.settings} credentials={credentials.credentials} disabled={credentialDisabled} onChange={credentials.setCredential} onSave={(kind) => void credentials.save(kind)} onClear={credentials.setClearKind} />
+      <SettingsFields draft={reader.draft} disabled={settingsDisabled} onUpdate={reader.update} />
+      <CredentialFields settings={reader.settings} credentials={credentials.credentials} disabled={settingsDisabled} onChange={credentials.setCredential} onSave={(kind) => void credentials.save(kind)} onClear={credentials.setClearKind} />
       <p className="ad-muted">当前 Skill 解析：Hunter {reader.settings.resolvedHunterSkillPath || "—"}；FOFA {reader.settings.resolvedFofaSkillPath || "—"}</p>
       {reader.error ? <p className="ad-field-error">{reader.error}</p> : null}{reader.notice ? <p className="ad-muted">{reader.notice}</p> : null}
       <div className="ad-form-actions"><Button className="primary" disabled={saving || !reader.isSettingsReady} onClick={() => void settingsSave.save()}>保存设置</Button><Button disabled={saving || reader.loading} onClick={() => void reader.load()}>重新读取设置</Button></div>

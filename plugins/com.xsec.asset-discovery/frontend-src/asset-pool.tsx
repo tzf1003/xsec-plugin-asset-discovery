@@ -86,8 +86,21 @@ export function AssetPool({ api, runs, selectedRunId, onSelectedRunId }: AssetPo
     try { const result = await api.importAssets(selected, projectId); setImportOpen(false); setProjectId(""); await load(); setNotice(`导入完成：新增 ${result.created}，跳过 ${result.skipped}，失败 ${result.failed}`); } catch (reason) { setProjectsError(`导入失败：${String(reason)}`); } finally { setMutating(false); }
   };
   const remove = async () => {
+    const selectedCount = selected.length;
     setMutating(true);
-    try { await api.deleteAssets(selected); setDeleteOpen(false); await load(); setNotice(`已删除 ${selected.length} 条资产。`); } catch (reason) { setError(`删除资产失败：${String(reason)}`); } finally { setMutating(false); }
+    console.info("asset-discovery.assets.delete.started", { selectedCount });
+    try {
+      const result = await api.deleteAssets(selected);
+      setDeleteOpen(false);
+      await load();
+      console.info("asset-discovery.assets.delete.completed", { selectedCount, deleted: result.deleted });
+      setNotice(`已删除 ${result.deleted} 条资产。`);
+    } catch (reason) {
+      console.error("asset-discovery.assets.delete.failed", { selectedCount, message: String(reason) });
+      setError(`删除资产失败：${String(reason)}`);
+    } finally {
+      setMutating(false);
+    }
   };
   return <section className="ad-assets">
     <AssetFilterToolbar filters={filters} queryDraft={queryDraft} runs={runs} selectedCount={selected.length} mutating={mutating} onSubmit={() => update({ query: queryDraft.trim() || undefined })} onQuery={(value) => { setQueryDraft(value); if (!value) update({ query: undefined }); }} onUpdate={update} onRun={onSelectedRunId} onImport={() => void openImport()} onDelete={() => setDeleteOpen(true)} />

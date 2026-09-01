@@ -7,6 +7,13 @@ const CANCELLED_STATUSES = new Set(["cancelled", "canceled", "stopped"]);
 const HOST_LABEL = "[a-z0-9](?:[a-z0-9-]*[a-z0-9])?";
 const HOST_PATTERN = new RegExp(`^(?:${HOST_LABEL})(?:\\.(?:${HOST_LABEL}))*$`, "i");
 const WILDCARD_PATTERN = new RegExp(`^\\*\\.(?:${HOST_LABEL})(?:\\.(?:${HOST_LABEL}))+$`, "i");
+const IPV4_SCOPE_PATTERN = /^(\d{1,3}(?:\.\d{1,3}){3})(?::(\d+))?$/;
+const IPV6_SCOPE_PATTERN = /^\[([0-9a-f:.]+)](?::(\d+))?$/i;
+const IPV4_OCTET_COUNT = 4;
+const MIN_IPV4_OCTET = 0;
+const MAX_IPV4_OCTET = 255;
+const MIN_PORT = 1;
+const MAX_PORT = 65_535;
 
 export function collectionBucket(status: string): Exclude<CollectionStatusFilter, "all"> | "other" {
   const value = status.trim().toLowerCase();
@@ -113,11 +120,57 @@ function isHackerOneUrl(value: string): boolean {
   }
 }
 
+function hasValidPort(value: string | undefined): boolean {
+  if (value === undefined) return true;
+  const port = Number(value);
+  return /^\d+$/.test(value) && Number.isSafeInteger(port) && port >= MIN_PORT && port <= MAX_PORT;
+}
+
+function isIpv4Address(value: string): boolean {
+  const octets = value.split(".");
+  return octets.length === IPV4_OCTET_COUNT && octets.every((octet) => {
+    const number = Number(octet);
+    return /^\d{1,3}$/.test(octet) && Number.isInteger(number) && number >= MIN_IPV4_OCTET && number <= MAX_IPV4_OCTET;
+  });
+}
+
+function isIpv6Address(value: string): boolean {
+  try {
+    new URL(`http://[${value}]/`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resemblesIpScope(value: string): boolean {
+  return value.startsWith("[")
+    || /^\d+(?:\.\d+)+(?:[:].*)?$/.test(value)
+    || (value.includes(":") && /^[0-9a-f:.]+$/i.test(value));
+}
+
+function isIpScope(value: string): boolean {
+  const ipv4 = IPV4_SCOPE_PATTERN.exec(value);
+  if (ipv4) return isIpv4Address(ipv4[1]) && hasValidPort(ipv4[2]);
+  const ipv6 = IPV6_SCOPE_PATTERN.exec(value);
+  return Boolean(ipv6 && isIpv6Address(ipv6[1]) && hasValidPort(ipv6[2]));
+}
+
 function networkScope(value: string): boolean {
   if (value.startsWith("*.")) return WILDCARD_PATTERN.test(value);
   if (value.includes("*") || value.startsWith(".")) return false;
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value) || value.startsWith("//")) return isHackerOneUrl(value);
-  return HOST_PATTERN.test(value) || /^\[[0-9a-f:]+\](?::\d+)?$/i.test(value) || /^(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?$/.test(value);
+  if (resemblesIpScope(value)) return isIpScope(value);
+  return HOST_PATTERN.test(value);
+}
+
+function companyScope(value: string): boolean {
+  return !resemblesIpScope(value)
+    && !value.includes("*")
+    && !value.includes("://")
+    && !value.startsWith("//")
+    && /[\p{L}\p{N}]/u.test(value)
+    && !/[\p{Cc}]/u.test(value);
 }
 
 export function validateCollectorScope(provider: CollectorProvider, prompt: string): string | undefined {
@@ -128,7 +181,7 @@ export function validateCollectorScope(provider: CollectorProvider, prompt: stri
   if (!lines.length) return error;
   const valid = provider === "hunter"
     ? lines.every(networkScope)
-    : lines.every((line) => networkScope(line) || (!line.includes("*") && !line.includes("://") && !line.startsWith("//") && /[\p{L}\p{N}]/u.test(line) && !/[\p{Cc}]/u.test(line)));
+    : lines.every((line) => networkScope(line) || companyScope(line));
   return valid ? undefined : error;
 }
 

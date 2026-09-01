@@ -1,24 +1,51 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssetDiscoveryApi } from "./host";
 import type { CollectionRun, CollectorSettings, ExecutionDefaults } from "./types";
 import { collectionBucket } from "./utils";
 
 const RUN_REFRESH_INTERVAL_MS = 5_000;
+type RunsLoadState = "ok" | "error" | "stale";
 
 function useRuns(api: AssetDiscoveryApi) {
   const [runs, setRuns] = useState<CollectionRun[]>([]);
   const [runsLoading, setRunsLoading] = useState(true);
   const [runsError, setRunsError] = useState<string>();
-  const loadRuns = useCallback(async (): Promise<void> => {
-    setRunsLoading(true);
-    setRunsError(undefined);
-    try {
-      setRuns(await api.runs());
-    } catch (reason) {
-      setRunsError(`读取收集任务失败：${String(reason)}`);
-    } finally {
-      setRunsLoading(false);
-    }
+  const requestGeneration = useRef(0);
+  const requestInFlight = useRef<Promise<RunsLoadState>>();
+  const queuedRefresh = useRef<Promise<RunsLoadState>>();
+  const loadRuns = useCallback((queueAfterCurrent = false): Promise<RunsLoadState> => {
+    const start = (): Promise<RunsLoadState> => {
+      const generation = ++requestGeneration.current;
+      setRunsLoading(true);
+      setRunsError(undefined);
+      const request = Promise.resolve().then(async () => {
+        try {
+          const next = await api.runs();
+          if (generation !== requestGeneration.current) return "stale";
+          setRuns(next);
+          return "ok";
+        } catch (reason) {
+          if (generation !== requestGeneration.current) return "stale";
+          setRunsError(`读取收集任务失败：${String(reason)}`);
+          return "error";
+        } finally {
+          if (requestInFlight.current === request) requestInFlight.current = undefined;
+          if (generation === requestGeneration.current) setRunsLoading(false);
+        }
+      });
+      requestInFlight.current = request;
+      return request;
+    };
+    const current = requestInFlight.current;
+    if (!current) return start();
+    if (!queueAfterCurrent) return Promise.resolve("stale");
+    if (queuedRefresh.current) return queuedRefresh.current;
+    const queued = current.then(() => {
+      queuedRefresh.current = undefined;
+      return start();
+    });
+    queuedRefresh.current = queued;
+    return queued;
   }, [api]);
   return { runs, runsLoading, runsError, loadRuns };
 }
@@ -47,10 +74,14 @@ function useCollectorSetup(api: AssetDiscoveryApi) {
   return { defaults, defaultsError, settings, settingsError, loadDefaults, loadSettings };
 }
 
-function useActiveRunRefresh(runs: CollectionRun[], loadRuns: () => Promise<void>) {
+function useActiveRunRefresh(runs: CollectionRun[], loadRuns: () => Promise<RunsLoadState>) {
   useEffect(() => {
     if (!runs.some((run) => collectionBucket(run.status) === "running")) return;
-    const timer = window.setInterval(() => { void loadRuns(); }, RUN_REFRESH_INTERVAL_MS);
+    const timer = window.setInterval(() => {
+      void loadRuns().then((state) => {
+        if (state === "error") window.clearInterval(timer);
+      });
+    }, RUN_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [loadRuns, runs]);
 }
@@ -59,7 +90,7 @@ export function useDashboardState(api: AssetDiscoveryApi) {
   const runs = useRuns(api);
   const setup = useCollectorSetup(api);
   const refresh = useCallback(async () => {
-    await Promise.all([runs.loadRuns(), setup.loadDefaults(), setup.loadSettings()]);
+    await Promise.all([runs.loadRuns(true), setup.loadDefaults(), setup.loadSettings()]);
   }, [runs.loadRuns, setup.loadDefaults, setup.loadSettings]);
   useEffect(() => { void refresh(); }, [refresh]);
   useActiveRunRefresh(runs.runs, runs.loadRuns);
