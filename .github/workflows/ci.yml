@@ -29,3 +29,9 @@ jobs:
         run: pnpm install --frozen-lockfile && pnpm check
       - name: Verify the tracked frontend artifact
         run: git diff --exit-code -- plugins/com.xsec.asset-discovery/com.xsec.desktop/frontend/index.js
+
+  source-preflight:
+    needs: manifest
+    uses: tzf1003/xsec-plugins/.github/workflows/first-party-source-preflight.yml@main
+    with:
+      plugin_id: com.xsec.asset-discovery
