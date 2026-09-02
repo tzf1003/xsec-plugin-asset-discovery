@@ -145,8 +145,8 @@ function isIpv6Address(value: string): boolean {
 
 function resemblesIpScope(value: string): boolean {
   return value.startsWith("[")
-    || /^\d+(?:\.\d+)+(?:[:].*)?$/.test(value)
-    || (value.includes(":") && /^[0-9a-f:.]+$/i.test(value));
+    || /^\d+(?:\.\d+)+(?:[:/].*)?$/.test(value)
+    || (value.includes(":") && /^[0-9a-f:./]+$/i.test(value));
 }
 
 function isIpScope(value: string): boolean {
