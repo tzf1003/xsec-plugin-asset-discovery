@@ -1,7 +1,7 @@
 import { build } from "esbuild";
 import { readFile, writeFile } from "node:fs/promises";
 
-const pluginRoot = new URL("../plugins/com.xsec.asset-discovery/", import.meta.url);
+const pluginRoot = new URL("../", import.meta.url);
 const frontendOutput = new URL("com.xsec.desktop/frontend/index.js", pluginRoot);
 
 function addExplicitActivatorExport(source) {
